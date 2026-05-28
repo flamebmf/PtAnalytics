@@ -82,10 +82,10 @@ class YoloDetector:
             import shutil
             shutil.rmtree(ov_path)
         logger.info(f"Exporting {model_path} to OpenVINO (one-time)...")
-        tmp = YOLO(model_path)
+        tmp = YOLO(model_path, task="detect")
         tmp.export(format="openvino", imgsz=self.imgsz, half=False)
         logger.info(f"OpenVINO export done, loading from {ov_path}")
-        return YOLO(ov_path)
+        return YOLO(ov_path, task="detect")
 
     def detect(self, frame: np.ndarray) -> list[dict]:
         results = self.model(

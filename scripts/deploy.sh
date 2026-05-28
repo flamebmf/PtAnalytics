@@ -241,7 +241,7 @@ fi
 # ------------------------------------------------------------------
 if [[ "$WITH_BUILD" == "yes" ]]; then
     log "Building cam-analyzer image locally..."
-    podman build -t "$APP_IMAGE" -f "${PROJECT_DIR}/docker/Containerfile" "$PROJECT_DIR"
+    podman build -t "$APP_IMAGE" -f "${PROJECT_DIR}/docker/Containerfile.debian" "$PROJECT_DIR"
 elif [[ -n "$REGISTRY" ]]; then
     APP_IMAGE="${REGISTRY}/cam-analyzer:${IMAGE_TAG}"
     log "Pulling cam-analyzer from registry: $APP_IMAGE"

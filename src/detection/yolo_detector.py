@@ -32,8 +32,33 @@ class YoloDetector:
         self.imgsz = imgsz
         self.backend = backend
 
-        self.model = self._load_model(model_path)
+        local_path = self._find_model(model_path)
+        self.model = self._load_model(local_path)
         logger.info(f"YOLO: {model_path} device={device} imgsz={imgsz} workers={workers or 'default'} backend={backend}")
+
+    def _find_model(self, name: str) -> str:
+        """Locate model file locally without downloading."""
+        if os.path.isfile(name):
+            return os.path.abspath(name)
+        search_dirs = [
+            os.getcwd(),
+            os.path.join(os.path.expanduser("~"), ".config", "ultralytics"),
+            os.environ.get("YOLO_CONFIG_DIR", ""),
+            "/app/models/ultralytics",
+            "/app/models",
+        ]
+        searched = []
+        for d in search_dirs:
+            if not d:
+                continue
+            p = os.path.join(d, name)
+            searched.append(d)
+            if os.path.isfile(p):
+                return os.path.abspath(p)
+        raise FileNotFoundError(
+            f"Model '{name}' not found. Searched: {searched}. "
+            f"Place {name} in /app/models/ultralytics/ or run with backend: torch"
+        )
 
     def _load_model(self, model_path: str) -> YOLO:
         if self.backend == "openvino":

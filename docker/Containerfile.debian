@@ -1,5 +1,5 @@
-# cam-analyzer — Debian slim (запасной образ, не RHEL-оптимизированный)
-# Сборка: podman build -t cam-analyzer:debian -f docker/Containerfile.debian .
+# cam-analyzer — Debian slim (основной образ)
+# Сборка: podman build -t cam-analyzer -f docker/Containerfile.debian .
 
 FROM python:3.11-slim-bookworm
 
@@ -19,9 +19,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-RUN mkdir -p /data/frames /app/models
+RUN mkdir -p /data/frames /app/models /app/logs /app/config
 
 COPY . .
+RUN chown -R 1001:0 /app /data
+
+USER 1001
 
 ENV CONFIG_DIR=/app/config
 ENV PYTHONUNBUFFERED=1

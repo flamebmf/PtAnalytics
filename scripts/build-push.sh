@@ -4,7 +4,7 @@
 # Использование:
 #   bash scripts/build-push.sh              # собрать + push в registry из .env
 #   bash scripts/build-push.sh --no-push    # только собрать, без push
-#   bash scripts/build-push.sh --debian     # собрать Debian-вариант
+#   bash scripts/build-push.sh --ubi9       # собрать UBI9-вариант
 # ============================================================
 set -euo pipefail
 
@@ -21,13 +21,13 @@ fi
 
 REGISTRY="${REGISTRY:-}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
-DOCKERFILE="docker/Containerfile"
+DOCKERFILE="docker/Containerfile.debian"
 DO_PUSH=true
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --no-push) DO_PUSH=false ;;
-        --debian)  DOCKERFILE="docker/Containerfile.debian"; IMAGE_TAG="${IMAGE_TAG}-debian" ;;
+        --ubi9)    DOCKERFILE="docker/Containerfile"; IMAGE_TAG="${IMAGE_TAG}-ubi9" ;;
         --tag)     IMAGE_TAG="$2"; shift ;;
         *)         log "Unknown arg: $1"; exit 1 ;;
     esac

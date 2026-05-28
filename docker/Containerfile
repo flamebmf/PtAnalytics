@@ -1,0 +1,31 @@
+# cam-analyzer — UBI 9 base (RHEL 9/10)
+# Альтернативный Debian-образ: docker/Containerfile.debian
+
+FROM registry.access.redhat.com/ubi9/python-311:latest
+
+USER root
+RUN dnf install -y --nodocs \
+    mesa-libGL \
+    glib2 \
+    libSM \
+    libXext \
+    libXrender \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+RUN mkdir -p /data/frames /app/models /app/logs /app/config
+
+COPY . .
+RUN chown -R 1001:0 /app /data
+
+USER 1001
+
+ENV CONFIG_DIR=/app/config
+ENV PYTHONUNBUFFERED=1
+
+ENTRYPOINT ["python", "run.py"]

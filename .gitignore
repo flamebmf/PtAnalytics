@@ -1,0 +1,30 @@
+# Environment
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Data
+data/frames/*.jpg
+data/frames/*.png
+
+# Models
+models/*.pt
+models/*.onnx
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Backup
+*.bak
+*.backup

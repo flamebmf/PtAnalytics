@@ -1,0 +1,9 @@
+import yaml
+
+with open('D:\\www\\cam\\config\\cameras.yaml') as f:
+    data = yaml.safe_load(f)
+
+for cam in data['cameras']:
+    print(f"ID: {cam['id']}")
+    print(f"URL: {cam['rtsp_url']}")
+    print()

@@ -1,0 +1,57 @@
+version: "3.9"
+
+# podman-compose.yml для cam-analyzer на RHEL 9/10
+# Все данные в /srv/cam-analyzer/ (хостовые каталоги, не podman volumes)
+
+services:
+  cam-analyzer:
+    build:
+      context: ..
+      dockerfile: docker/Containerfile
+    container_name: cam-analyzer
+    restart: unless-stopped
+    ports:
+      - "${HEALTH_PORT:-8090}:8090"
+    environment:
+      - TZ=${TZ:-Europe/Moscow}
+      - DB_HOST=${DB_HOST:?DB_HOST required}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-cam}
+      - DB_USER=${DB_USER:-cam}
+      - DB_PASSWORD=${DB_PASSWORD:?DB_PASSWORD required}
+      - MQTT_HOST=${MQTT_HOST:-localhost}
+      - MQTT_PORT=${MQTT_PORT:-1883}
+      - HEALTH_PORT=${HEALTH_PORT:-8090}
+    volumes:
+      - /srv/cam-analyzer/frames:/data/frames:Z
+      - /srv/cam-analyzer/models:/app/models:Z
+
+  mosquitto:
+    image: docker.io/eclipse-mosquitto:2-openssl
+    container_name: cam-mosquitto
+    restart: unless-stopped
+    ports:
+      - "${MQTT_PORT:-1883}:1883"
+    volumes:
+      - /srv/cam-analyzer/mqtt-config/mosquitto.conf:/mosquitto/config/mosquitto.conf:Z
+      - /srv/cam-analyzer/mqtt-data:/mosquitto/data:Z
+
+  postgres:
+    image: docker.io/pgvector/pgvector:pg17
+    container_name: cam-postgres
+    restart: unless-stopped
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_DB=${DB_NAME:-cam}
+      - POSTGRES_USER=${DB_USER:-cam}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-cam_pass}
+      - POSTGRES_HOST_AUTH_METHOD=md5
+    volumes:
+      - /srv/cam-analyzer/pgdata:/var/lib/postgresql/data:Z
+      - ../data/pg-init:/docker-entrypoint-initdb.d:Z
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${DB_USER:-cam}", "-d", "${DB_NAME:-cam}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10

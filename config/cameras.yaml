@@ -16,20 +16,10 @@ cameras:
     roi: []                              # polygon [[x1,y1],[x2,y2],...] or empty = full frame
     motion_threshold: 0.15               # override global motion.threshold
   - id: "entrance"
-    name: "Парковка 2"
+    name: "Вход"
     rtsp_url: "rtsp://rtsp:cu2W25TpQX3W@192.168.10.18/mode=real&idc=2&ids=1?rtsp_transport=tcp"
     fps: 10
     enabled: true
     motion_enabled: false
     roi: []                              # polygon [[x1,y1],[x2,y2],...] or empty = full frame
     motion_threshold: 0.15               # override global motion.threshold
-  - id: "Wide"
-    name: "общий"
-    rtsp_url: "rtsp://rtsp:cu2W25TpQX3W@192.168.10.18/mode=real&idc=13&ids=1?rtsp_transport=tcp"
-    fps: 10
-    enabled: true
-    motion_enabled: false
-    roi: []                              # polygon [[x1,y1],[x2,y2],...] or empty = full frame
-    motion_threshold: 0.15               # override global motion.threshold
-
-

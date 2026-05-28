@@ -72,8 +72,15 @@ class YoloDetector:
     def _load_openvino(self, model_path: str) -> YOLO:
         ov_path = self._ov_dir(model_path)
         if os.path.isdir(ov_path):
-            logger.info(f"Loading OpenVINO model from {ov_path}")
-            return YOLO(ov_path)
+            xml_file = os.path.join(ov_path, f"{os.path.basename(ov_path).replace('_openvino_model', '')}.xml")
+            bin_file = xml_file.replace(".xml", ".bin")
+            valid = os.path.isfile(xml_file) and os.path.isfile(bin_file) and os.path.getsize(bin_file) > 1000
+            if valid:
+                logger.info(f"Loading OpenVINO model from {ov_path}")
+                return YOLO(ov_path)
+            logger.warning(f"Corrupt OpenVINO model at {ov_path}, re-exporting...")
+            import shutil
+            shutil.rmtree(ov_path)
         logger.info(f"Exporting {model_path} to OpenVINO (one-time)...")
         tmp = YOLO(model_path)
         tmp.export(format="openvino", imgsz=self.imgsz, half=False)

@@ -28,7 +28,7 @@ detector:
   iou: 0.45
   imgsz: 1280
   workers: 4
-  backend: openvino             # torch, openvino
+  backend: torch                # torch, openvino
   classes: [0, 1, 2, 3, 5, 7]   # person, bicycle, car, motorcycle, bus, truck
 
 tracker:

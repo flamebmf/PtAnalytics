@@ -4,8 +4,16 @@ import os
 import signal
 import sys
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
+
+MSK = timezone(timedelta(hours=3))
+
+def _local(ts):
+    """Convert naive UTC datetime to Moscow time isoformat."""
+    if ts is None:
+        return None
+    return ts.replace(tzinfo=timezone.utc).astimezone(MSK).isoformat()
 
 from aiohttp import web
 from loguru import logger
@@ -167,8 +175,8 @@ async def main():
                 "ignored": obj.ignored,
                 "plate_number": obj.plate_number,
                 "face_id": obj.face_id,
-                "first_seen": obj.first_seen.isoformat() if obj.first_seen else None,
-                "last_seen": obj.last_seen.isoformat() if obj.last_seen else None,
+                "first_seen": _local(obj.first_seen),
+                "last_seen": _local(obj.last_seen),
                 "appearance_count": obj.appearance_count,
             }
             for obj in objects
@@ -192,8 +200,8 @@ async def main():
             "ignored": obj.ignored,
             "plate_number": obj.plate_number,
             "face_id": obj.face_id,
-            "first_seen": obj.first_seen.isoformat() if obj.first_seen else None,
-            "last_seen": obj.last_seen.isoformat() if obj.last_seen else None,
+            "first_seen": _local(obj.first_seen),
+            "last_seen": _local(obj.last_seen),
             "appearance_count": obj.appearance_count,
             "frames": [
                 {
@@ -201,7 +209,7 @@ async def main():
                     "image": f"/frames/{Path(f.image_path).name}",
                     "bbox": [f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2],
                     "confidence": f.confidence,
-                    "timestamp": f.timestamp.isoformat() if f.timestamp else None,
+                    "timestamp": _local(f.timestamp),
                 }
                 for f in frames
             ],

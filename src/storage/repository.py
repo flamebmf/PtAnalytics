@@ -107,18 +107,19 @@ class StorageRepository:
         timestamp: Optional[datetime] = None,
     ) -> FrameCapture:
         x1, y1, x2, y2 = bbox
-        padded_x1 = max(0, x1 - 10)
-        padded_y1 = max(0, y1 - 10)
-        padded_x2 = min(frame.shape[1], x2 + 10)
-        padded_y2 = min(frame.shape[0], y2 + 10)
-        crop = frame[padded_y1:padded_y2, padded_x1:padded_x2]
+        annotated = frame.copy()
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        label = f"{confidence:.2f}"
+        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        cv2.rectangle(annotated, (x1, y1 - th - 6), (x1 + tw + 4, y1), (0, 255, 0), -1)
+        cv2.putText(annotated, label, (x1 + 2, y1 - 3), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
         ts = self._db_timestamp(timestamp)
         filename = f"{object_id.hex}_{ts.strftime('%Y%m%d_%H%M%S_%f')}.jpg"
         camera_dir = self.data_dir
         camera_dir.mkdir(parents=True, exist_ok=True)
         filepath = camera_dir / filename
-        cv2.imwrite(str(filepath), crop, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        cv2.imwrite(str(filepath), annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
 
         async with await get_session() as session:
             fc = FrameCapture(

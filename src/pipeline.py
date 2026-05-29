@@ -383,17 +383,27 @@ class CameraPipeline:
             try:
                 x1, y1, x2, y2 = bbox
                 crop = frame[y1:y2, x1:x2]
-                veid = compute_embedding(crop)
-                await self.repo.update_embedding(obj.id, veid)
-                matches = await self.repo.find_similar_objects(
-                    veid, class_name, exclude_camera_id=self.cam_id,
-                )
-                if matches:
-                    best, score = matches[0]
-                    if best.name:
-                        obj.name = best.name
-                        await self.repo.rename_object(obj.id, best.name)
-                        logger.info(f"[{self.cam_name}] ReID: track {track_id} → '{best.name}' ({score:.2f})")
+                if crop.size == 0:
+                    logger.debug(f"[{self.cam_name}] ReID skip: empty crop track {track_id}")
+                else:
+                    veid = compute_embedding(crop)
+                    embed_norm = np.linalg.norm(veid)
+                    logger.info(f"[{self.cam_name}] ReID: track {track_id} {class_name} "
+                                f"embedding dim={len(veid)} norm={embed_norm:.4f}")
+                    await self.repo.update_embedding(obj.id, veid)
+                    matches = await self.repo.find_similar_objects(
+                        veid, class_name, exclude_object_id=obj.id,
+                    )
+                    logger.info(f"[{self.cam_name}] ReID: found {len(matches)} matches for track {track_id}")
+                    for m, s in matches:
+                        logger.info(f"[{self.cam_name}] ReID candidate: {m.id} '{m.name}' "
+                                    f"cam={m.camera_id} score={s:.4f}")
+                    if matches:
+                        best, score = matches[0]
+                        if best.name:
+                            obj.name = best.name
+                            await self.repo.rename_object(obj.id, best.name)
+                            logger.info(f"[{self.cam_name}] ReID: track {track_id} → '{best.name}' ({score:.3f})")
             except Exception as e:
                 logger.error(f"ReID error: {e}")
 

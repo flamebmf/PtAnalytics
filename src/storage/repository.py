@@ -356,7 +356,7 @@ class StorageRepository:
         self,
         embedding: list[float],
         class_name: str,
-        exclude_camera_id: str | None = None,
+        exclude_object_id: uuid.UUID | None = None,
         threshold: float = 0.85,
         max_age_seconds: float = 300,
         limit: int = 5,
@@ -375,8 +375,8 @@ class StorageRepository:
                 .where(TrackedObject.class_name == class_name)
                 .where(TrackedObject.last_seen >= cutoff)
             )
-            if exclude_camera_id:
-                stmt = stmt.where(TrackedObject.camera_id != exclude_camera_id)
+            if exclude_object_id:
+                stmt = stmt.where(TrackedObject.id != exclude_object_id)
             stmt = stmt.order_by("dist").limit(limit)
             result = await session.execute(stmt)
             rows = result.all()

@@ -269,14 +269,45 @@ function renderFlat(tbody, items, offset) {
 
 function renderGrouped(tbody, items) {
   const groups = {};
-  const unnamed = [];
   for (const o of items) {
     if (o.name) {
-      if (!groups[o.name]) groups[o.name] = { name: o.name, objs: [] };
+      if (!groups[o.name]) groups[o.name] = { name: o.name, objs: [], last_seen: null };
       groups[o.name].objs.push(o);
-    } else {
-      unnamed.push(o);
+      if (!groups[o.name].last_seen || o.last_seen > groups[o.name].last_seen)
+        groups[o.name].last_seen = o.last_seen;
     }
+  }
+  const rows = [];
+  for (const g of Object.values(groups)) rows.push({ type: 'group', ...g });
+  for (const o of items) if (!o.name) rows.push({ type: 'item', ...o });
+  rows.sort((a, b) => {
+    const da = new Date(a.last_seen || 0), db = new Date(b.last_seen || 0);
+    return db - da;
+  });
+  let html = '';
+  for (const row of rows) {
+    if (row.type === 'group') {
+      const cameras = [...new Set(row.objs.map(o => o.camera_id))].join(', ');
+      const classes = [...new Set(row.objs.map(o => o.class_name))].join(', ');
+      const last = row.last_seen ? row.last_seen.replace('T', ' ').slice(0, 19) : '—';
+      html += `<tr onclick="loadDetail('${row.objs[0].id}')" role="button" style="cursor:pointer" class="table-active">
+        <td class="text-nowrap"><span class="text-info fw-bold">${escapeHtml(row.name)}</span> <span class="badge bg-secondary">${row.objs.length}</span></td>
+        <td><span class="badge bg-info">${classes}</span></td>
+        <td><code>${cameras}</code></td>
+        <td class="text-nowrap"><small>${last}</small></td>
+      </tr>`;
+    } else {
+      const last = row.last_seen ? row.last_seen.replace('T', ' ').slice(0, 19) : '—';
+      html += `<tr onclick="loadDetail('${row.id}')" role="button" style="cursor:pointer">
+        <td class="text-nowrap"><span class="text-muted">—</span></td>
+        <td><span class="badge bg-info">${row.class_name}</span></td>
+        <td><code>${row.camera_id}</code></td>
+        <td class="text-nowrap"><small>${last}</small></td>
+      </tr>`;
+    }
+  }
+  tbody.innerHTML = html || '<tr><td colspan="4" class="text-center text-muted py-4">нет объектов</td></tr>';
+}
   }
 
   let html = '';
@@ -350,8 +381,9 @@ async function loadDetail(id) {
       grid.innerHTML = o.frames.map(f => {
         const ts = f.timestamp ? f.timestamp.replace('T', ' ').slice(0, 19) : '';
         const conf = f.confidence ? (f.confidence * 100).toFixed(0) + '%' : '';
-        return `<div class="frame-card position-relative">
+        return `<div class="frame-card position-relative" id="fc-${f.id}">
           <img src="${f.image}" onclick="openLightbox('${f.image}')" class="w-100" style="height:140px;object-fit:cover;border-radius:4px;cursor:pointer" loading="lazy" onerror="this.style.display='none'">
+          <button class="btn btn-sm btn-outline-danger position-absolute top-0 end-0 m-1" style="font-size:10px;line-height:1;padding:2px 5px" onclick="deleteFrame('${f.id}')" title="Удалить кадр">&times;</button>
           <div class="d-flex justify-content-between small text-muted mt-1">
             <span>${conf}</span>
             <span>${ts.slice(11, 19)}</span>
@@ -400,6 +432,16 @@ async function deleteObject() {
     } catch { alert('Ошибка удаления'); }
   };
   delModal.show();
+}
+
+// ---- Delete Frame ----
+async function deleteFrame(frameId) {
+  if (!confirm('Удалить этот кадр?')) return;
+  try {
+    const r = await fetch('/frames/' + frameId, { method: 'DELETE' });
+    if (!r.ok) throw new Error();
+    document.getElementById('fc-' + frameId)?.remove();
+  } catch { alert('Ошибка удаления кадра'); }
 }
 
 // ---- Ignore ----

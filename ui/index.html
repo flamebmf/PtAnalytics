@@ -323,35 +323,6 @@ function renderGrouped(tbody, items) {
   }
   tbody.innerHTML = html || '<tr><td colspan="4" class="text-center text-muted py-4">нет объектов</td></tr>';
 }
-  }
-
-  let html = '';
-  for (const [gname, grp] of Object.entries(groups).sort((a, b) => {
-    const la = a[1].objs.reduce((m, o) => Math.max(m, new Date(o.last_seen || 0)), 0);
-    const lb = b[1].objs.reduce((m, o) => Math.max(m, new Date(o.last_seen || 0)), 0);
-    return lb - la;
-  })) {
-    const cameras = [...new Set(grp.objs.map(o => o.camera_id))].join(', ');
-    const classes = [...new Set(grp.objs.map(o => o.class_name))].join(', ');
-    const last = grp.objs.reduce((a, b) => new Date(a.last_seen || 0) > new Date(b.last_seen || 0) ? a : b);
-    html += `<tr onclick="loadDetail('${grp.objs[0].id}')" role="button" style="cursor:pointer" class="table-active">
-      <td class="text-nowrap"><span class="text-info fw-bold">${escapeHtml(gname)}</span> <span class="badge bg-secondary">${grp.objs.length}</span></td>
-      <td><span class="badge bg-info">${classes}</span></td>
-      <td><code>${cameras}</code></td>
-      <td class="text-nowrap"><small>${last.last_seen ? last.last_seen.replace('T', ' ').slice(0, 19) : '—'}</small></td>
-    </tr>`;
-  }
-  for (const o of unnamed) {
-    const last = o.last_seen ? o.last_seen.replace('T', ' ').slice(0, 19) : '—';
-    html += `<tr onclick="loadDetail('${o.id}')" role="button" style="cursor:pointer">
-      <td class="text-nowrap"><span class="text-muted">—</span></td>
-      <td><span class="badge bg-info">${o.class_name}</span></td>
-      <td><code>${o.camera_id}</code></td>
-      <td class="text-nowrap"><small>${last}</small></td>
-    </tr>`;
-  }
-  tbody.innerHTML = html || '<tr><td colspan="4" class="text-center text-muted py-4">нет объектов</td></tr>';
-}
 
 function renderPagination() {
   const pages = Math.ceil(currentTotal / PAGE_SIZE);

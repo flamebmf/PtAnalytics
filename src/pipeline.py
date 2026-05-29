@@ -323,7 +323,7 @@ class CameraPipeline:
         vehicle_classes = {"car", "truck", "bus", "motorcycle"}
 
         if class_name in vehicle_classes and self.lpr.enabled:
-            plate_number = self.lpr.recognize(frame, bbox)
+            plate_number = await self.lpr.recognize(frame, bbox)
             if plate_number:
                 logger.info(f"[{self.cam_name}] Plate detected: {plate_number}")
                 self.stats.plates_recognized += 1

@@ -27,11 +27,15 @@ class LPRRecognizer:
             conf_threshold=0.35,
         )
 
-    def _ensure_ocr(self):
+    async def ensure_ocr(self):
         if self._ocr is None and self.enabled:
+            import asyncio
+            loop = asyncio.get_running_loop()
             try:
                 from paddleocr import PaddleOCR
-                self._ocr = PaddleOCR(lang="en", use_angle_cls=False)
+                self._ocr = await loop.run_in_executor(
+                    None, lambda: PaddleOCR(lang="en", use_angle_cls=False)
+                )
                 logger.info("PaddleOCR initialized for LPR")
             except Exception as e:
                 logger.error(f"Failed to init PaddleOCR: {e}")
@@ -74,12 +78,12 @@ class LPRRecognizer:
             logger.debug(f"OCR error: {e}")
         return None
 
-    def recognize(self, frame: np.ndarray, bbox: tuple[int, int, int, int]) -> Optional[str]:
+    async def recognize(self, frame: np.ndarray, bbox: tuple[int, int, int, int]) -> Optional[str]:
         """Detect plate in vehicle bbox and run OCR. Returns plate text or None."""
         if not self.enabled:
             return None
 
-        self._ensure_ocr()
+        await self.ensure_ocr()
         if self._ocr is None:
             return None
 

@@ -251,7 +251,7 @@ async function loadObjects(offset) {
     }
 
     if (groupByName) {
-      renderGrouped(tbody, d.items);
+      renderGrouped(tbody, d.items, sort);
       document.getElementById('obj-range').textContent = '';
       document.getElementById('obj-pagi').innerHTML = '';
     } else {
@@ -281,7 +281,8 @@ function renderFlat(tbody, items, offset) {
   }).join('');
 }
 
-function renderGrouped(tbody, items) {
+function renderGrouped(tbody, items, sortDir) {
+  const desc = !sortDir || sortDir === '-last_seen';
   const groups = {};
   for (const o of items) {
     if (o.name) {
@@ -296,7 +297,7 @@ function renderGrouped(tbody, items) {
   for (const o of items) if (!o.name) rows.push({ type: 'item', ...o });
   rows.sort((a, b) => {
     const da = new Date(a.last_seen || 0), db = new Date(b.last_seen || 0);
-    return db - da;
+    return desc ? db - da : da - db;
   });
   let html = '';
   for (const row of rows) {

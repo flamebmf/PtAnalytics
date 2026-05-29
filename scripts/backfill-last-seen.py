@@ -14,11 +14,11 @@ from src.config import load_settings
 
 
 def _unlocal(ts):
-    """Make datetime naive (assume UTC) for TIMESTAMP WITHOUT TIME ZONE column."""
+    """Strip timezone info without converting the time (assume UTC)."""
     if ts is None:
         return None
     if ts.tzinfo is not None:
-        ts = ts.astimezone(None).replace(tzinfo=None)
+        ts = ts.replace(tzinfo=None)
     return ts
 
 

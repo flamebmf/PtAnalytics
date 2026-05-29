@@ -9,6 +9,7 @@
 - [x] **Script: `cleanup-small-frames.py`** — deletes frames with bbox w < 40 or h < 40, removes image files, recalculates parent `last_seen`, reports orphans
 - [x] **Periodic cleanup task** — runs every 5 min: deletes orphan frames (no parent object) + orphan objects (0 frames). Logs only when something removed
 - [x] **Fix: `last_seen` uses frame timestamp** — `get_or_create_object` now accepts `timestamp` param; sets `last_seen` (and `first_seen`) to the passed timestamp instead of `datetime.now()`. Pipeline passes `datetime.now(timezone.utc)` on each track process
+- [x] **Script: `backfill-last-seen.py`** — sets `last_seen = max(frame_captures.timestamp)` for all existing objects. Run once after deploy to fix historical data
 
 ### Session 1 (2026-05-29)
 - [x] Fix: class-aware tracker matching — prevents cat+person or car+car merging
@@ -72,6 +73,7 @@ cameras:
 | `scripts/backfill-reid.py` | Computes embeddings for existing unnamed vehicles, searches matches across cameras |
 | `scripts/export-dataset.py` | Splits collected crops into train/val, generates dataset.yaml for fine-tuning |
 | `scripts/cleanup-small-frames.py` | Removes frames with bbox < min_bbox_size, cleans up orphaned objects |
+| `scripts/backfill-last-seen.py` | Fixes `last_seen` for existing objects to match `max(frame_captures.timestamp)` |
 
 ## API
 | Endpoint | Status |

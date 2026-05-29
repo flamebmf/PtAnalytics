@@ -338,7 +338,7 @@ class StorageRepository:
                 await session.execute(
                     update(TrackedObject)
                     .where(TrackedObject.id == obj_id)
-                    .values(last_seen=max_ts)
+                    .values(last_seen=self._db_timestamp(max_ts))
                 )
             await session.commit()
             return True

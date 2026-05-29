@@ -102,13 +102,13 @@ async def main():
 
         if matches:
             best, score = matches[0]
-            if best.name:
-                await repo.update_object_name(obj.id, best.name)
-                matched += 1
-                logger.info(f"ReID: {obj.id} ({obj.camera_id}) → '{best.name}' "
-                           f"score={score:.3f} match_with={best.id} ({best.camera_id})")
-            else:
-                logger.info(f"ReID: {obj.id} score={score:.3f} but match '{best.id}' has no name")
+            name = best.name or f"vehicle-{best.id.hex[:8]}"
+            if not best.name:
+                await repo.update_object_name(best.id, name)
+            await repo.update_object_name(obj.id, name)
+            matched += 1
+            logger.info(f"ReID: {obj.id} ({obj.camera_id}) → '{name}' "
+                       f"score={score:.3f} match_with={best.id} ({best.camera_id})")
         else:
             logger.info(f"ReID: {obj.id} ({obj.camera_id}) no matches above {args.threshold}")
 

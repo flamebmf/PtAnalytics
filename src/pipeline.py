@@ -400,10 +400,12 @@ class CameraPipeline:
                                     f"cam={m.camera_id} score={s:.4f}")
                     if matches:
                         best, score = matches[0]
-                        if best.name:
-                            obj.name = best.name
-                            await self.repo.update_object_name(obj.id, best.name)
-                            logger.info(f"[{self.cam_name}] ReID: track {track_id} → '{best.name}' ({score:.3f})")
+                        name = best.name or f"vehicle-{best.id.hex[:8]}"
+                        if not best.name:
+                            await self.repo.update_object_name(best.id, name)
+                        obj.name = name
+                        await self.repo.update_object_name(obj.id, name)
+                        logger.info(f"[{self.cam_name}] ReID: track {track_id} → '{name}' ({score:.3f})")
             except Exception as e:
                 logger.error(f"ReID error: {e}")
 

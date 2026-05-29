@@ -19,7 +19,7 @@ class YoloDetector:
         imgsz: int = 640,
         workers: int | None = None,
         backend: str = "torch",
-        min_bbox_size: int = 20,
+        min_bbox_size: int = 40,
     ):
         if workers:
             os.environ.setdefault("OMP_NUM_THREADS", str(workers))

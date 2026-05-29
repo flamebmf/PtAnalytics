@@ -30,6 +30,7 @@ detector:
   workers: 4
   backend: torch                # torch, openvino
   classes: [0, 1, 2, 3, 5, 7]   # person, bicycle, car, motorcycle, bus, truck
+  min_bbox_size: 40             # detections smaller than this (w or h) are discarded
 
 tracker:
   max_age: 30                     # frames to keep dead tracks

@@ -10,6 +10,7 @@
 - [x] **Periodic cleanup task** — runs every 5 min: deletes orphan frames (no parent object) + orphan objects (0 frames). Logs only when something removed
 - [x] **Fix: `last_seen` uses frame timestamp** — `get_or_create_object` now accepts `timestamp` param; sets `last_seen` (and `first_seen`) to the passed timestamp instead of `datetime.now()`. Pipeline passes `datetime.now(timezone.utc)` on each track process
 - [x] **Script: `backfill-last-seen.py`** — sets `last_seen = max(frame_captures.timestamp)` for all existing objects. Run once after deploy to fix historical data
+- [x] **Fix: removed `onupdate=func.now()` from `last_seen`** — ORM-level override подменял явное `obj.last_seen = ts` на `NOW()` при каждом flush. Теперь явные присвоения сохраняются
 
 ### Session 1 (2026-05-29)
 - [x] Fix: class-aware tracker matching — prevents cat+person or car+car merging

@@ -63,12 +63,15 @@ cameras:
 ## Next Steps
 - [ ] **Deploy dataset collection**, let it run for 3-7 days
 - [ ] **Run `export-dataset.py`**, fine-tune YOLO on collected crops
-- [ ] **Fix LPR** — ни разу не определился номер на машине
-- [ ] **Backfill script** (`scripts/backfill-reid.py`): iterate unnamed vehicles with saved frames, compute embedding, store, cluster by similarity, auto-assign names
-- [ ] **Unlink API** (`PATCH /objects/{id}/unlink`): reset auto-assigned name to NULL, log reason
+- [ ] **Fix LPR** — YOLO plate model не скачивается или PaddleOCR не читает номера
+- [ ] **Unlink API** (`PATCH /objects/{id}/unlink`): reset auto-assigned name to NULL
 - [ ] **Manual merge** (`POST /objects/merge`): assign same name to two+ TrackedObjects
-- [ ] **Pending merge review** (`GET /objects/pending-merge`): show match candidates awaiting confirmation
+- [ ] **Pending merge review API**: show match candidates awaiting confirmation
 - [ ] **Multi-frame confirmation**: only auto-assign name after match persists for N consecutive frames
-- [ ] **Tune ReID threshold** (currently 0.85) based on real backfill data
-- [ ] **Deploy with ReID**, collect cross-camera match data
+- [ ] **Tune ReID threshold** (currently 0.85) based on real backfill scores
 - [ ] **PresenceTracker** — arriving/home/leaving по именам объектов (gate1→parking1→entrance)
+
+## Done
+- [x] Backfill script run: 26 vehicles processed, all have embeddings
+- [x] ReID pipeline active: auto-computes embedding on new tracks, cross-camera matching
+- [x] min_bbox_size=40: filters glares and tiny false detections

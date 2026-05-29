@@ -308,6 +308,23 @@ class StorageRepository:
             result = await session.execute(query)
             return result.scalar() or 0
 
+    async def delete_frame(self, frame_id: uuid.UUID) -> bool:
+        async with await get_session() as session:
+            result = await session.execute(
+                select(FrameCapture).where(FrameCapture.id == frame_id)
+            )
+            fc = result.scalar_one_or_none()
+            if fc is None:
+                return False
+            try:
+                if fc.image_path and Path(fc.image_path).exists():
+                    Path(fc.image_path).unlink()
+            except Exception:
+                pass
+            await session.delete(fc)
+            await session.commit()
+            return True
+
     async def list_frames(
         self,
         object_id: uuid.UUID,

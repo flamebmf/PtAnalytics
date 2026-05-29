@@ -239,6 +239,13 @@ async def main():
             return web.json_response({"error": "not found"}, status=404)
         return web.json_response({"status": "deleted"})
 
+    async def handle_delete_frame(request: web.Request) -> web.Response:
+        frame_id = uuid.UUID(request.match_info["id"])
+        ok = await repository.delete_frame(frame_id)
+        if not ok:
+            return web.json_response({"error": "not found"}, status=404)
+        return web.json_response({"status": "deleted"})
+
     async def handle_get_frame(request: web.Request) -> web.Response:
         filename = request.match_info["filename"]
         if ".." in filename or "/" in filename or "\\" in filename:
@@ -288,6 +295,7 @@ async def main():
     health_app.router.add_patch("/objects/{id}", handle_patch_object)
     health_app.router.add_delete("/objects/{id}", handle_delete_object)
     health_app.router.add_post("/objects/{id}/ignore", handle_ignore_object)
+    health_app.router.add_delete("/frames/{id}", handle_delete_frame)
     health_app.router.add_get("/frames/{filename:.+}", handle_get_frame)
 
     runner = web.AppRunner(health_app)

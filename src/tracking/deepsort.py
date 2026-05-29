@@ -132,7 +132,7 @@ class DeepSortTracker:
             trk_bboxes = [t.get_state() for t in self.trackers]
 
             # Build per-class IoU sub-matrices so tracks never match wrong class
-            iou_threshold = 0.3
+            iou_threshold = 0.5
             used_dets = set()
             used_trks = set()
 
@@ -168,7 +168,7 @@ class DeepSortTracker:
                     dcy = (dy1 + dy2) / 2
                     dw = max(dx2 - dx1, 1)
                     dh = max(dy2 - dy1, 1)
-                    threshold = (dw + dh) / 2 * 3
+                    threshold = max(dw, dh) * 1.5
                     best_t = None
                     best_d = float("inf")
                     for t_idx in unmatched_trks:

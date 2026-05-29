@@ -54,6 +54,7 @@ class StorageRepository:
         camera_id: str,
         track_id: int,
         class_name: str,
+        timestamp: Optional[datetime] = None,
         embedding: Optional[list[float]] = None,
         plate_number: Optional[str] = None,
         face_hash: Optional[str] = None,
@@ -68,8 +69,9 @@ class StorageRepository:
             )
             obj = result.scalar_one_or_none()
 
+            ts = self._db_timestamp(timestamp)
             if obj:
-                obj.last_seen = self._db_timestamp()
+                obj.last_seen = ts
                 obj.class_name = class_name
                 obj.appearance_count = (obj.appearance_count or 0) + 1
                 if plate_number:
@@ -87,6 +89,8 @@ class StorageRepository:
                     camera_id=camera_id,
                     track_id=track_id,
                     class_name=class_name,
+                    first_seen=ts,
+                    last_seen=ts,
                     embedding=embedding,
                     plate_number=plate_number,
                     face_hash=face_hash,

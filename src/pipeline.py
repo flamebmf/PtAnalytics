@@ -353,6 +353,7 @@ class CameraPipeline:
                 camera_id=self.cam_id,
                 track_id=track_id,
                 class_name=class_name,
+                timestamp=datetime.now(timezone.utc),
                 embedding=embedding,
                 plate_number=plate_number,
                 face_hash=face_hash,

@@ -10,7 +10,7 @@ from loguru import logger
 from sqlalchemy import select, update
 
 from .db import get_session
-from .models import Camera, TrackedObject, FrameCapture, Event
+from .models import Camera, TrackedObject, FrameCapture, CropSample, Event
 
 
 class StorageRepository:
@@ -133,6 +133,86 @@ class StorageRepository:
             await session.commit()
             await session.refresh(fc)
             return fc
+
+    async def save_crop(
+        self,
+        camera_id: str,
+        class_name: str,
+        class_id: int,
+        frame: np.ndarray,
+        bbox: tuple[int, int, int, int],
+        phase: str = "entry",
+    ) -> Optional[str]:
+        """Save clean crop + YOLO label for dataset collection.
+        Returns relative path if saved, None if skipped (dedup or empty crop).
+        """
+        if await self._check_crop_dedup(camera_id, class_name, bbox):
+            return None
+
+        x1, y1, x2, y2 = bbox
+        crop = frame[y1:y2, x1:x2]
+        if crop.size == 0:
+            return None
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        suffix = uuid.uuid4().hex[:8]
+        img_name = f"{ts}_{suffix}.jpg"
+        rel_path = f"{class_name}/{camera_id}/{img_name}"
+        full_path = self.data_dir.parent / "crops" / rel_path
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(full_path), crop, [cv2.IMWRITE_JPEG_QUALITY, 90])
+
+        label_path = full_path.with_suffix(".txt")
+        label_path.write_text(f"{class_id} 0.5 0.5 1.0 1.0\n")
+
+        await self._record_crop(camera_id, class_name, bbox, rel_path, phase)
+        logger.info(f"[{camera_id}] Crop saved: {rel_path} ({phase})")
+        return rel_path
+
+    async def _check_crop_dedup(self, camera_id: str, class_name: str, bbox: tuple) -> bool:
+        from datetime import datetime, timezone, timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=60)
+        async with await get_session() as session:
+            rows = await session.execute(
+                select(CropSample).where(
+                    CropSample.camera_id == camera_id,
+                    CropSample.class_name == class_name,
+                    CropSample.timestamp >= cutoff,
+                )
+            )
+            for row in rows.scalars():
+                obb = (row.bbox_x1, row.bbox_y1, row.bbox_x2, row.bbox_y2)
+                if self._bbox_iou(bbox, obb) > 0.5:
+                    return True
+        return False
+
+    async def _record_crop(
+        self, camera_id: str, class_name: str, bbox: tuple,
+        image_path: str, phase: str,
+    ):
+        async with await get_session() as session:
+            session.add(CropSample(
+                camera_id=camera_id,
+                class_name=class_name,
+                bbox_x1=bbox[0], bbox_y1=bbox[1],
+                bbox_x2=bbox[2], bbox_y2=bbox[3],
+                image_path=image_path,
+                phase=phase,
+            ))
+            await session.commit()
+
+    @staticmethod
+    def _bbox_iou(a: tuple, b: tuple) -> float:
+        x1 = max(a[0], b[0])
+        y1 = max(a[1], b[1])
+        x2 = min(a[2], b[2])
+        y2 = min(a[3], b[3])
+        if x2 <= x1 or y2 <= y1:
+            return 0.0
+        inter = (x2 - x1) * (y2 - y1)
+        a_area = (a[2] - a[0]) * (a[3] - a[1])
+        b_area = (b[2] - b[0]) * (b[3] - b[1])
+        return inter / (a_area + b_area - inter + 1e-6)
 
     async def log_event(
         self,
@@ -282,9 +362,9 @@ class StorageRepository:
         limit: int = 5,
     ) -> list[tuple[TrackedObject, float]]:
         from sqlalchemy import func as sqfunc
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta
         vec = np.array(embedding, dtype=np.float32)
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+        cutoff = self._db_timestamp() - timedelta(seconds=max_age_seconds)
         async with await get_session() as session:
             stmt = (
                 select(

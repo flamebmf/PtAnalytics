@@ -51,3 +51,7 @@ face:
   enabled: true
   min_confidence: 0.5
   search_threshold: 0.6           # cosine similarity threshold for face match
+
+dataset:
+  crop_enabled: true               # save clean crops + YOLO labels for fine-tuning
+  crop_interval: 60                # dedup window in seconds

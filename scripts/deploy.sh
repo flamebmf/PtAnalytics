@@ -192,7 +192,20 @@ CREATE INDEX IF NOT EXISTS idx_objects_plate ON tracked_objects(plate_number) WH
 CREATE INDEX IF NOT EXISTS idx_objects_embedding ON tracked_objects
     USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100) WHERE embedding IS NOT NULL;
 
-CREATE TABLE IF NOT EXISTS frame_captures (
+    CREATE TABLE IF NOT EXISTS crop_samples (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        camera_id VARCHAR(64) NOT NULL,
+        class_name VARCHAR(32) NOT NULL,
+        bbox_x1 INTEGER NOT NULL, bbox_y1 INTEGER NOT NULL,
+        bbox_x2 INTEGER NOT NULL, bbox_y2 INTEGER NOT NULL,
+        image_path VARCHAR(512) NOT NULL,
+        phase VARCHAR(16) DEFAULT 'entry',
+        is_val BOOLEAN DEFAULT false,
+        timestamp TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_crop_samples_lookup ON crop_samples(camera_id, class_name, timestamp);
+
+    CREATE TABLE IF NOT EXISTS frame_captures (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     object_id UUID REFERENCES tracked_objects(id) ON DELETE CASCADE,
     image_path TEXT NOT NULL,

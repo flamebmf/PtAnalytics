@@ -97,6 +97,15 @@ class CameraPipeline:
         self._last_obj_by_track: dict[int, TrackedObject] = {}
         self.track_depart_timeout = settings.get("tracker", {}).get("depart_timeout", 3.0)
 
+        # Dataset collection (3 crops per track: entry, mid, exit)
+        ds_cfg = settings.get("dataset", {})
+        self.crop_enabled = ds_cfg.get("crop_enabled", True)
+        self._last_frame: dict[int, np.ndarray] = {}
+        self._last_bbox: dict[int, tuple] = {}
+        self._last_class_name: dict[int, str] = {}
+        self._last_class_id: dict[int, int] = {}
+        self._crop_phase: dict[int, int] = {}  # 0=none, 1=entry, 2=mid, 3=exit, 4=done
+
     async def run(self):
         """Main loop."""
         if not self.enabled:
@@ -199,6 +208,16 @@ class CameraPipeline:
 
                 current_ids = {t["track_id"] for t in tracks}
 
+                # Store last-known state for crop saving (entry/mid/exit)
+                for track in tracks:
+                    tid = track["track_id"]
+                    self._last_frame[tid] = frame
+                    self._last_bbox[tid] = track["bbox"]
+                    self._last_class_name[tid] = track["class_name"]
+                    self._last_class_id[tid] = track["class_id"]
+                    if tid not in self._crop_phase:
+                        self._crop_phase[tid] = 0
+
                 # Process only NEW tracks (appeared or reappeared)
                 for track in tracks:
                     tid = track["track_id"]
@@ -216,6 +235,22 @@ class CameraPipeline:
                     else:
                         self._active_tracks[tid]["missing_since"] = 0.0
 
+                # Mid-crop: save when track has been alive ~50% of depart timeout
+                if self.crop_enabled:
+                    for tid, info in list(self._active_tracks.items()):
+                        if self._crop_phase.get(tid, 0) == 1:
+                            elapsed = time() - info["first_seen"]
+                            if elapsed >= self.track_depart_timeout * 0.5:
+                                bbox = self._last_bbox.get(tid)
+                                cn = self._last_class_name.get(tid)
+                                ci = self._last_class_id.get(tid)
+                                lf = self._last_frame.get(tid)
+                                if bbox and cn is not None and ci is not None and lf is not None:
+                                    await self.repo.save_crop(
+                                        self.cam_id, cn, ci, lf, bbox, phase="mid",
+                                    )
+                                self._crop_phase[tid] = 2
+
                 # Detect departed tracks (disappeared)
                 now = time()
                 _t_post = now - _t3
@@ -226,6 +261,17 @@ class CameraPipeline:
                         if td["missing_since"] == 0.0:
                             td["missing_since"] = now
                         elif now - td["missing_since"] >= self.track_depart_timeout:
+                            # Exit crop before cleanup
+                            if self.crop_enabled and self._crop_phase.get(tid, 0) in (1, 2):
+                                bbox = self._last_bbox.get(tid)
+                                cn = self._last_class_name.get(tid)
+                                ci = self._last_class_id.get(tid)
+                                lf = self._last_frame.get(tid)
+                                if bbox and cn is not None and ci is not None and lf is not None:
+                                    await self.repo.save_crop(
+                                        self.cam_id, cn, ci, lf, bbox, phase="exit",
+                                    )
+                                self._crop_phase[tid] = 4
                             self._active_tracks.pop(tid)
                             logger.info(
                                 f"[{self.cam_name}] Track {tid} ({td['class_name']}) "
@@ -350,6 +396,17 @@ class CameraPipeline:
                         logger.info(f"[{self.cam_name}] ReID: track {track_id} → '{best.name}' ({score:.2f})")
             except Exception as e:
                 logger.error(f"ReID error: {e}")
+
+        # Entry crop for dataset collection
+        if self.crop_enabled:
+            try:
+                await self.repo.save_crop(
+                    self.cam_id, class_name, track["class_id"],
+                    frame, bbox, phase="entry",
+                )
+                self._crop_phase[track_id] = 1
+            except Exception as e:
+                logger.error(f"Crop error: {e}")
 
         try:
             meta = {

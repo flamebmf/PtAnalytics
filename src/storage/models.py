@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import String, Integer, Float, DateTime, Text, ForeignKey, JSON, func
+from sqlalchemy import String, Integer, Float, DateTime, Text, ForeignKey, JSON, Boolean, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -60,6 +60,22 @@ class FrameCapture(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     object: Mapped["TrackedObject"] = relationship(back_populates="frames")
+
+
+class CropSample(Base):
+    __tablename__ = "crop_samples"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    camera_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    class_name: Mapped[str] = mapped_column(String(32), nullable=False)
+    bbox_x1: Mapped[int] = mapped_column(Integer, nullable=False)
+    bbox_y1: Mapped[int] = mapped_column(Integer, nullable=False)
+    bbox_x2: Mapped[int] = mapped_column(Integer, nullable=False)
+    bbox_y2: Mapped[int] = mapped_column(Integer, nullable=False)
+    image_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    phase: Mapped[str] = mapped_column(String(16), default="entry")
+    is_val: Mapped[bool] = mapped_column(Boolean, default=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Event(Base):

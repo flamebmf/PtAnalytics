@@ -35,12 +35,12 @@ async def main():
     )
 
     async with await get_session() as session:
-        objs = await session.execute(select(TrackedObject.id))
-        obj_ids = [row[0] for row in objs.all()]
+        objs = await session.execute(select(TrackedObject.id, TrackedObject.last_seen, TrackedObject.first_seen))
+        rows = objs.all()
         fixed_last = 0
         fixed_first = 0
 
-        for obj_id in obj_ids:
+        for obj_id, curr_last, curr_first in rows:
             ts_result = await session.execute(
                 select(
                     func.min(FrameCapture.timestamp),
@@ -52,18 +52,16 @@ async def main():
                 continue
             min_ts, max_ts = _unlocal(row[0]), _unlocal(row[1])
             vals = {}
-            if max_ts is not None:
+            if max_ts is not None and _unlocal(curr_last) != max_ts:
                 vals["last_seen"] = max_ts
-            if min_ts is not None:
+                fixed_last += 1
+            if min_ts is not None and _unlocal(curr_first) != min_ts:
                 vals["first_seen"] = min_ts
+                fixed_first += 1
             if vals:
                 await session.execute(
                     update(TrackedObject).where(TrackedObject.id == obj_id).values(**vals)
                 )
-                if "last_seen" in vals:
-                    fixed_last += 1
-                if "first_seen" in vals and min_ts != max_ts:
-                    fixed_first += 1
 
         await session.commit()
         logger.info(f"Fixed last_seen for {fixed_last} objects, first_seen for {fixed_first} objects")

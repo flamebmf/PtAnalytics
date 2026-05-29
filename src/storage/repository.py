@@ -71,7 +71,6 @@ class StorageRepository:
 
             ts = self._db_timestamp(timestamp)
             if obj:
-                obj.last_seen = ts
                 obj.class_name = class_name
                 obj.appearance_count = (obj.appearance_count or 0) + 1
                 if plate_number:
@@ -134,6 +133,11 @@ class StorageRepository:
                 timestamp=ts,
             )
             session.add(fc)
+            await session.execute(
+                update(TrackedObject)
+                .where(TrackedObject.id == object_id)
+                .values(last_seen=ts)
+            )
             await session.commit()
             await session.refresh(fc)
             return fc

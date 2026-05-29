@@ -22,7 +22,7 @@ from sqlalchemy import select, text
 from .config import load_settings, load_cameras, load_triggers
 from .pipeline import CameraPipeline
 from .stats import StatsCollector
-from .storage import init_db, close_db, init_pgvector, StorageRepository, get_session
+from .storage import init_db, close_db, init_pgvector, init_schema, StorageRepository, get_session
 from .storage.models import TrackedObject, FrameCapture
 from .actions import ActionDispatcher, MQTTAction
 
@@ -61,6 +61,7 @@ async def main():
         database=os.environ.get("DB_NAME", db_cfg.get("name", "cam")),
     )
     await init_pgvector()
+    await init_schema()
     async with await get_session() as session:
         for stmt in [
             "ALTER TABLE tracked_objects ADD COLUMN IF NOT EXISTS name VARCHAR(128)",

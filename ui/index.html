@@ -304,7 +304,8 @@ function renderGrouped(tbody, items) {
       const cameras = [...new Set(row.objs.map(o => o.camera_id))].join(', ');
       const classes = [...new Set(row.objs.map(o => o.class_name))].join(', ');
       const last = row.last_seen ? row.last_seen.replace('T', ' ').slice(0, 19) : '—';
-      html += `<tr onclick="loadDetail('${row.objs[0].id}')" role="button" style="cursor:pointer" class="table-active">
+      const ids = row.objs.map(o => o.id).join(',');
+      html += `<tr onclick="loadGroupDetail('${escapeHtml(row.name)}', '${ids}')" role="button" style="cursor:pointer" class="table-active">
         <td class="text-nowrap"><span class="text-info fw-bold">${escapeHtml(row.name)}</span> <span class="badge bg-secondary">${row.objs.length}</span></td>
         <td><span class="badge bg-info">${classes}</span></td>
         <td><code>${cameras}</code></td>
@@ -362,6 +363,49 @@ function renderPagination() {
   if (pages > 15) html += '<li class="page-item disabled"><a class="page-link" href="#">…</a></li>';
   html += '<li class="page-item ' + (current >= pages - 1 ? 'disabled' : '') + '"><a class="page-link" href="#" onclick="loadObjects(' + ((pages - 1) * PAGE_SIZE) + ');return false">&raquo;</a></li>';
   document.getElementById('obj-pagi').innerHTML = html;
+}
+
+// ---- Group Detail ----
+async function loadGroupDetail(name, ids) {
+  currentObjId = ids.split(',')[0];
+  const div = document.getElementById('detail');
+  const grid = document.getElementById('frame-grid');
+  const empty = document.getElementById('frame-empty');
+  div.style.display = 'none';
+  empty.style.display = 'none';
+  grid.innerHTML = '<div class="text-center text-muted py-4">загрузка…</div>';
+  document.getElementById('detail-name').value = name;
+  document.getElementById('detail-title').textContent = 'Группа: ' + name;
+
+  try {
+    const allFrames = [];
+    for (const id of ids.split(',')) {
+      const r = await fetch('/objects/' + id);
+      const o = await r.json();
+      if (o.frames) allFrames.push(...o.frames.map(f => ({ ...f, camera_id: o.camera_id })));
+    }
+    allFrames.sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
+
+    if (allFrames.length) {
+      grid.innerHTML = allFrames.map(f => {
+        const ts = f.timestamp ? f.timestamp.replace('T', ' ').slice(0, 19) : '';
+        const conf = f.confidence ? (f.confidence * 100).toFixed(0) + '%' : '';
+        const cam = f.camera_id || '';
+        return `<div class="frame-card position-relative" id="fc-${f.id}">
+          <img src="${f.image}" onclick="openLightbox('${f.image}')" class="w-100" style="height:140px;object-fit:cover;border-radius:4px;cursor:pointer" loading="lazy" onerror="this.style.display='none'">
+          <button class="btn btn-sm btn-outline-danger position-absolute top-0 end-0 m-1" style="font-size:10px;line-height:1;padding:2px 5px" onclick="deleteFrame('${f.id}')" title="Удалить кадр">&times;</button>
+          <div class="d-flex justify-content-between small text-muted mt-1">
+            <span>${cam} ${conf}</span>
+            <span>${ts.slice(11, 19)}</span>
+          </div>
+        </div>`;
+      }).join('');
+    } else {
+      empty.style.display = 'block';
+    }
+    div.style.display = 'block';
+    div.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch { div.style.display = 'none'; }
 }
 
 // ---- Detail ----

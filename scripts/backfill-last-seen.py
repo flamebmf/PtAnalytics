@@ -1,4 +1,4 @@
-"""Set last_seen for all tracked objects to max(frame_captures.timestamp)."""
+"""Recalculate first_seen/last_seen from actual frame timestamps for all objects."""
 import asyncio
 import sys
 from pathlib import Path
@@ -11,6 +11,15 @@ from sqlalchemy import select, func, update
 from src.storage import init_db, get_session, close_db
 from src.storage.models import FrameCapture, TrackedObject
 from src.config import load_settings
+
+
+def _unlocal(ts):
+    """Make datetime naive (assume UTC) for TIMESTAMP WITHOUT TIME ZONE column."""
+    if ts is None:
+        return None
+    if ts.tzinfo is not None:
+        ts = ts.astimezone(None).replace(tzinfo=None)
+    return ts
 
 
 async def main():
@@ -26,29 +35,38 @@ async def main():
     )
 
     async with await get_session() as session:
-        objs = await session.execute(select(TrackedObject.id, TrackedObject.last_seen))
-        rows = objs.all()
-        fixed = 0
+        objs = await session.execute(select(TrackedObject.id))
+        obj_ids = [row[0] for row in objs.all()]
+        fixed_last = 0
+        fixed_first = 0
 
-        for obj_id, curr_seen in rows:
+        for obj_id in obj_ids:
             ts_result = await session.execute(
-                select(func.max(FrameCapture.timestamp)).where(FrameCapture.object_id == obj_id)
+                select(
+                    func.min(FrameCapture.timestamp),
+                    func.max(FrameCapture.timestamp),
+                ).where(FrameCapture.object_id == obj_id)
             )
-            max_ts = ts_result.scalar()
-            if max_ts is None:
+            row = ts_result.one_or_none()
+            if row is None or row[0] is None:
                 continue
-            if max_ts.tzinfo is not None:
-                max_ts = max_ts.astimezone(None).replace(tzinfo=None)
-            if curr_seen != max_ts:
+            min_ts, max_ts = _unlocal(row[0]), _unlocal(row[1])
+            vals = {}
+            if max_ts is not None:
+                vals["last_seen"] = max_ts
+            if min_ts is not None:
+                vals["first_seen"] = min_ts
+            if vals:
                 await session.execute(
-                    update(TrackedObject)
-                    .where(TrackedObject.id == obj_id)
-                    .values(last_seen=max_ts)
+                    update(TrackedObject).where(TrackedObject.id == obj_id).values(**vals)
                 )
-                fixed += 1
+                if "last_seen" in vals:
+                    fixed_last += 1
+                if "first_seen" in vals and min_ts != max_ts:
+                    fixed_first += 1
 
         await session.commit()
-        logger.info(f"Fixed {fixed} objects, skipped {len(rows) - fixed} (already correct or no frames)")
+        logger.info(f"Fixed last_seen for {fixed_last} objects, first_seen for {fixed_first} objects")
 
     await close_db()
 

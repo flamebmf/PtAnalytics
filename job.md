@@ -7,6 +7,7 @@
 - [x] **Fix: `renderGrouped` respects sort direction** — group+unnamed items now sort by the selected `sort` param (not always DESC)
 - [x] **Fix: timezone error in `delete_frame`** — `func.max()` returns tz-aware datetime, but column is `TIMESTAMP WITHOUT TIME ZONE`. `_db_timestamp()` strips tzinfo after UTC conversion. Error was: `can't subtract offset-naive and offset-aware datetimes` (asyncpg `DataError`)
 - [x] **Script: `cleanup-small-frames.py`** — deletes frames with bbox w < 40 or h < 40, removes image files, recalculates parent `last_seen`, reports orphans
+- [x] **Periodic cleanup task** — runs every 5 min: deletes orphan frames (no parent object) + orphan objects (0 frames). Logs only when something removed
 
 ### Session 1 (2026-05-29)
 - [x] Fix: class-aware tracker matching — prevents cat+person or car+car merging

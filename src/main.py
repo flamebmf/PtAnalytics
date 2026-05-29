@@ -120,6 +120,34 @@ async def main():
 
     tasks.append(asyncio.create_task(stats_loop()))
 
+    # --- Periodic cleanup task ---
+    async def cleanup_loop():
+        from sqlalchemy import delete
+        from src.storage.models import FrameCapture, TrackedObject
+        while True:
+            await asyncio.sleep(300)
+            try:
+                async with await get_session() as session:
+                    # Delete frames whose parent object no longer exists
+                    subq = select(TrackedObject.id)
+                    orph_frames = await session.execute(
+                        delete(FrameCapture).where(FrameCapture.object_id.not_in(subq))
+                    )
+                    # Delete objects with zero frames
+                    alive = select(FrameCapture.object_id).distinct()
+                    orph_objs = await session.execute(
+                        delete(TrackedObject).where(
+                            ~TrackedObject.id.in_(alive)
+                        )
+                    )
+                    await session.commit()
+                    if orph_frames.rowcount or orph_objs.rowcount:
+                        logger.info(f"Cleanup: removed {orph_frames.rowcount} orphan frames, {orph_objs.rowcount} orphan objects")
+            except Exception as ex:
+                logger.warning(f"Cleanup error: {ex}")
+
+    tasks.append(asyncio.create_task(cleanup_loop()))
+
     logger.info("Starting HTTP health server...")
 
     # --- Health HTTP server ---

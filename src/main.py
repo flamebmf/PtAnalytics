@@ -123,21 +123,24 @@ async def main():
     # --- Periodic cleanup task ---
     async def cleanup_loop():
         from sqlalchemy import delete
-        from src.storage.models import FrameCapture, TrackedObject
+        from src.storage.models import FrameCapture, TrackedObject, Event
         while True:
             await asyncio.sleep(300)
             try:
                 async with await get_session() as session:
                     # Delete frames whose parent object no longer exists
-                    subq = select(TrackedObject.id)
+                    alive = select(TrackedObject.id)
                     orph_frames = await session.execute(
-                        delete(FrameCapture).where(FrameCapture.object_id.not_in(subq))
+                        delete(FrameCapture).where(FrameCapture.object_id.not_in(alive))
                     )
-                    # Delete objects with zero frames
-                    alive = select(FrameCapture.object_id).distinct()
+                    # Delete events + objects with zero frames
+                    alive_f = select(FrameCapture.object_id).distinct()
+                    await session.execute(
+                        delete(Event).where(Event.object_id.not_in(alive_f))
+                    )
                     orph_objs = await session.execute(
                         delete(TrackedObject).where(
-                            ~TrackedObject.id.in_(alive)
+                            ~TrackedObject.id.in_(alive_f)
                         )
                     )
                     await session.commit()

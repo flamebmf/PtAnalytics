@@ -46,6 +46,7 @@ motion:
 lpr:
   enabled: true
   min_confidence: 0.6
+  plate_size: n              # n/s/m — YOLO plate model size (nano/small/medium)
 
 face:
   enabled: true

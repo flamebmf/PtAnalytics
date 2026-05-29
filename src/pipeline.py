@@ -14,6 +14,7 @@ from .motion import MotionDetector, MotionMethod
 from .detection import YoloDetector
 from .tracking import DeepSortTracker
 from .recognition import LPRRecognizer, FaceRecognizer
+from .recognition.reid import compute_embedding
 from .storage import StorageRepository
 from .storage.models import TrackedObject
 from .actions import ActionDispatcher
@@ -183,6 +184,7 @@ class CameraPipeline:
                 _t_det = time() - _t2
                 self.stats.frames_processed += 1
                 self.stats.last_frame_at = time()
+                detections = self._filter_persons_in_vehicles(detections)
                 if not detections:
                     if self.debug:
                         logger.info(f"[TIMING {self.cam_name}] mot={_t_mot:.2f}s det={_t_det:.2f}s post=0s")
@@ -330,6 +332,25 @@ class CameraPipeline:
         except Exception as e:
             logger.error(f"DB error saving frame: {e}")
 
+        # Vehicle ReID: auto-link unnamed vehicles across cameras
+        if not obj.name and class_name in ("car", "truck", "bus", "motorcycle"):
+            try:
+                x1, y1, x2, y2 = bbox
+                crop = frame[y1:y2, x1:x2]
+                veid = compute_embedding(crop)
+                await self.repo.update_embedding(obj.id, veid)
+                matches = await self.repo.find_similar_objects(
+                    veid, class_name, exclude_camera_id=self.cam_id,
+                )
+                if matches:
+                    best, score = matches[0]
+                    if best.name:
+                        obj.name = best.name
+                        await self.repo.rename_object(obj.id, best.name)
+                        logger.info(f"[{self.cam_name}] ReID: track {track_id} → '{best.name}' ({score:.2f})")
+            except Exception as e:
+                logger.error(f"ReID error: {e}")
+
         try:
             meta = {
                 "track_id": track_id,
@@ -365,6 +386,27 @@ class CameraPipeline:
         if track_id in self._last_obj_by_track:
             self._last_obj_by_track[track_id].ignored = True
             logger.info(f"[{self.cam_name}] Track {track_id} marked ignored in memory")
+
+    VEHICLE_IDS = {2, 3, 5, 7}  # car, motorcycle, bus, truck
+
+    @staticmethod
+    def _filter_persons_in_vehicles(detections: list) -> list:
+        vehicles = [d for d in detections if d["class_id"] in CameraPipeline.VEHICLE_IDS]
+        if not vehicles:
+            return detections
+        result = []
+        for d in detections:
+            if d["class_id"] != 0:  # not person
+                result.append(d)
+                continue
+            inside = False
+            for v in vehicles:
+                if CameraPipeline._bbox_overlap(d["bbox"], v["bbox"]) > 0.5:
+                    inside = True
+                    break
+            if not inside:
+                result.append(d)
+        return result
 
     def _should_skip(self) -> bool:
         return (time() - self._last_processed) < self.motion_skip

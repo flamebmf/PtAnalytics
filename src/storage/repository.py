@@ -272,6 +272,46 @@ class StorageRepository:
             await session.commit()
             return True
 
+    async def find_similar_objects(
+        self,
+        embedding: list[float],
+        class_name: str,
+        exclude_camera_id: str | None = None,
+        threshold: float = 0.85,
+        max_age_seconds: float = 300,
+        limit: int = 5,
+    ) -> list[tuple[TrackedObject, float]]:
+        from sqlalchemy import func as sqfunc
+        from datetime import datetime, timezone, timedelta
+        vec = np.array(embedding, dtype=np.float32)
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+        async with await get_session() as session:
+            stmt = (
+                select(
+                    TrackedObject,
+                    TrackedObject.embedding.cosine_distance(vec).label("dist")
+                )
+                .where(TrackedObject.embedding.isnot(None))
+                .where(TrackedObject.class_name == class_name)
+                .where(TrackedObject.last_seen >= cutoff)
+            )
+            if exclude_camera_id:
+                stmt = stmt.where(TrackedObject.camera_id != exclude_camera_id)
+            stmt = stmt.order_by("dist").limit(limit)
+            result = await session.execute(stmt)
+            rows = result.all()
+        return [(r[0], 1 - r[1]) for r in rows if (1 - r[1]) >= threshold]
+
+    async def update_embedding(self, object_id: uuid.UUID, embedding: list[float]) -> None:
+        async with await get_session() as session:
+            result = await session.execute(
+                select(TrackedObject).where(TrackedObject.id == object_id)
+            )
+            obj = result.scalar_one_or_none()
+            if obj:
+                obj.embedding = embedding
+                await session.commit()
+
     async def list_object_names(self) -> list[dict]:
         async with await get_session() as session:
             from sqlalchemy import func

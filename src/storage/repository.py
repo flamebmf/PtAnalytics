@@ -315,18 +315,31 @@ class StorageRepository:
 
     async def delete_frame(self, frame_id: uuid.UUID) -> bool:
         async with await get_session() as session:
+            from sqlalchemy import func
             result = await session.execute(
                 select(FrameCapture).where(FrameCapture.id == frame_id)
             )
             fc = result.scalar_one_or_none()
             if fc is None:
                 return False
+            obj_id = fc.object_id
             try:
                 if fc.image_path and Path(fc.image_path).exists():
                     Path(fc.image_path).unlink()
             except Exception:
                 pass
             await session.delete(fc)
+            # Update parent object's last_seen to max remaining frame timestamp
+            ts_result = await session.execute(
+                select(func.max(FrameCapture.timestamp)).where(FrameCapture.object_id == obj_id)
+            )
+            max_ts = ts_result.scalar()
+            if max_ts is not None:
+                await session.execute(
+                    update(TrackedObject)
+                    .where(TrackedObject.id == obj_id)
+                    .values(last_seen=max_ts)
+                )
             await session.commit()
             return True
 

@@ -159,9 +159,10 @@ async def main():
         show_ignored = request.query.get("show_ignored") == "1"
         limit = int(request.query.get("limit", 50))
         offset = int(request.query.get("offset", 0))
+        sort = request.query.get("sort", "-last_seen")
         objects = await repository.list_objects(
             camera_id=camera_id, class_name=class_name, name=name, show_ignored=show_ignored,
-            limit=limit, offset=offset,
+            limit=limit, offset=offset, sort=sort,
         )
         total = await repository.get_object_count(
             camera_id=camera_id, class_name=class_name, show_ignored=show_ignored,

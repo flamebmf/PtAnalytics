@@ -46,7 +46,16 @@ body { font-size: .875rem; }
     </div>
     <div class="col-auto">
       <label class="form-label small mb-1">Название</label>
-      <input class="form-control form-control-sm" id="filter-name" placeholder="поиск по имени..." style="width:180px">
+      <input class="form-control form-control-sm" id="filter-name" placeholder="поиск по имени..." style="width:150px">
+    </div>
+    <div class="col-auto">
+      <label class="form-label small mb-1">Сортировка</label>
+      <select class="form-select form-select-sm" id="filter-sort" onchange="loadObjects(0)">
+        <option value="-last_seen">сначала новые</option>
+        <option value="+last_seen">сначала старые</option>
+        <option value="+first_seen">по появлению</option>
+        <option value="-first_seen">сначала новые объекты</option>
+      </select>
     </div>
     <div class="col-auto d-flex align-items-end pb-1 gap-3">
       <div class="form-check">
@@ -161,6 +170,7 @@ function saveFilters() {
     camera: document.getElementById('filter-camera').value,
     class: document.getElementById('filter-class').value,
     name: document.getElementById('filter-name').value,
+    sort: document.getElementById('filter-sort').value,
     group: document.getElementById('group-by-name').checked,
     ignored: document.getElementById('show-ignored').checked,
   })); } catch {}
@@ -172,6 +182,7 @@ function restoreFilters() {
     if (v.camera) document.getElementById('filter-camera').value = v.camera;
     if (v.class) document.getElementById('filter-class').value = v.class;
     if (v.name) document.getElementById('filter-name').value = v.name;
+    if (v.sort) document.getElementById('filter-sort').value = v.sort;
     document.getElementById('group-by-name').checked = !!v.group;
     document.getElementById('show-ignored').checked = !!v.ignored;
   } catch {}
@@ -180,6 +191,7 @@ function resetFilters() {
   document.getElementById('filter-camera').value = '';
   document.getElementById('filter-class').value = '';
   document.getElementById('filter-name').value = '';
+  document.getElementById('filter-sort').value = '-last_seen';
   document.getElementById('group-by-name').checked = false;
   document.getElementById('show-ignored').checked = false;
   saveFilters();
@@ -217,6 +229,8 @@ async function loadObjects(offset) {
   const name = document.getElementById('filter-name').value.trim();
   if (name) params.set('name', name);
 
+  const sort = document.getElementById('filter-sort').value;
+  if (sort !== '-last_seen') params.set('sort', sort);
   if (document.getElementById('show-ignored').checked) params.set('show_ignored', '1');
 
   const tbody = document.getElementById('obj-tbody');

@@ -275,9 +275,14 @@ class StorageRepository:
         show_ignored: bool = False,
         limit: int = 50,
         offset: int = 0,
+        sort: str = "-last_seen",
     ) -> list[TrackedObject]:
         async with await get_session() as session:
-            query = select(TrackedObject).order_by(TrackedObject.last_seen.desc())
+            from sqlalchemy import asc, desc
+            order = desc if sort.startswith("-") else asc
+            col_name = sort.lstrip("-")
+            col = getattr(TrackedObject, col_name, TrackedObject.last_seen)
+            query = select(TrackedObject).order_by(order(col))
             if camera_id:
                 query = query.where(TrackedObject.camera_id == camera_id)
             if class_name:

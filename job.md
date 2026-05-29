@@ -2,7 +2,13 @@
 
 ## Status: Deployed on Debian (bookworm), 3 cameras running, collecting data
 
-### Today (2026-05-29)
+### Today (2026-05-29) — Session 2
+- [x] **Fix: `delete_frame` updates parent `last_seen`** — after frame deletion, recalculates `TrackedObject.last_seen` from remaining frames' max timestamp
+- [x] **Fix: `renderGrouped` respects sort direction** — group+unnamed items now sort by the selected `sort` param (not always DESC)
+- [x] **Fix: timezone error in `delete_frame`** — `func.max()` returns tz-aware datetime, but column is `TIMESTAMP WITHOUT TIME ZONE`. `_db_timestamp()` strips tzinfo after UTC conversion. Error was: `can't subtract offset-naive and offset-aware datetimes` (asyncpg `DataError`)
+- [x] **Script: `cleanup-small-frames.py`** — deletes frames with bbox w < 40 or h < 40, removes image files, recalculates parent `last_seen`, reports orphans
+
+### Session 1 (2026-05-29)
 - [x] Fix: class-aware tracker matching — prevents cat+person or car+car merging
 - [x] Fix: local model resolution (`_find_model`) — searches CWD, ultralytics cache, YOLO_CONFIG_DIR before YOLO() download attempt
 - [x] Fix: validate OpenVINO model integrity — re-exports if .bin is corrupt
@@ -30,6 +36,9 @@
 - OpenVINO on yolo11s yields 1.4 FPS / 98% CPU (worse than torch's 0.27s). Works on Debian, no gain on small models.
 - False detections: glare detected as cars/people, people as cars (`confidence: 0.55`). Mitigated by person-in-car filter + per-camera thresholds.
 - Wide camera removed (unstable RTSP, detections not useful).
+- **LPR**: YOLO plate model не загружается — нет логов ни о загрузке, ни об ошибке (вероятно тихо падает в `_find_model` или при даунлоаде)
+- **entrance**: 0 детекций с момента деплоя (confidence 0.6 слишком высок для этого ракурса)
+- **parking1**: всего 1 объект (стоящие машины не проходят motion filter)
 
 ## Config
 ```yaml
@@ -46,6 +55,21 @@ cameras:
   parking1: { confidence: 0.6 }  # higher threshold suppresses stationary false positives
   entrance: { confidence: 0.6 }
 ```
+
+## Recent Commits
+| Hash | Message |
+|------|---------|
+| `80ec357` | fix: delete_frame converts max_ts via _db_timestamp() |
+| `121248f` | feat: cleanup-small-frames.py script |
+| `efec9bd` | fix(ui): renderGrouped respects selected sort direction |
+| `abc9d90` | fix: delete_frame updates parent last_seen to max remaining frame timestamp |
+
+## Scripts
+| Script | Purpose |
+|--------|---------|
+| `scripts/backfill-reid.py` | Computes embeddings for existing unnamed vehicles, searches matches across cameras |
+| `scripts/export-dataset.py` | Splits collected crops into train/val, generates dataset.yaml for fine-tuning |
+| `scripts/cleanup-small-frames.py` | Removes frames with bbox < min_bbox_size, cleans up orphaned objects |
 
 ## API
 | Endpoint | Status |

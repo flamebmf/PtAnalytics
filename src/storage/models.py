@@ -32,7 +32,7 @@ class TrackedObject(Base):
     track_id: Mapped[int] = mapped_column(Integer, nullable=False)
     class_name: Mapped[str] = mapped_column(String(32), nullable=False)
     first_seen: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    last_seen: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    last_seen: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     plate_number: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     face_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     face_hash: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)

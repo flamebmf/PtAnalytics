@@ -101,9 +101,7 @@ class LPRRecognizer:
         # Step 1: find plate regions
         candidates = self._plate_detector.detect(roi)
 
-        # Fallback: bottom-center heuristic if no YOLO detections
-        if not candidates:
-            candidates = self._heuristic_plate_candidates(roi)
+        # No fallback — YOLO model is reliable; contour heuristics create false positives
 
         # Step 2: OCR each candidate
         for cand in candidates:

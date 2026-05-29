@@ -73,7 +73,7 @@ cameras:
 | `scripts/backfill-reid.py` | Computes embeddings for existing unnamed vehicles, searches matches across cameras |
 | `scripts/export-dataset.py` | Splits collected crops into train/val, generates dataset.yaml for fine-tuning |
 | `scripts/cleanup-small-frames.py` | Removes frames with bbox < min_bbox_size, cleans up orphaned objects |
-| `scripts/backfill-last-seen.py` | Fixes `last_seen` for existing objects to match `max(frame_captures.timestamp)` |
+| `scripts/backfill-last-seen.py` | Recalculates `first_seen`/`last_seen` from `min`/`max` of actual frame timestamps for all objects |
 
 ## API
 | Endpoint | Status |

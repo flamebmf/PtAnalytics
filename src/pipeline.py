@@ -64,6 +64,7 @@ class CameraPipeline:
             imgsz=cam_det.get("imgsz", det_cfg.get("imgsz", 640)),
             workers=cam_det.get("workers", det_cfg.get("workers")),
             backend=cam_det.get("backend", det_cfg.get("backend", "torch")),
+            min_bbox_size=cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 20)),
         )
 
         # Tracker

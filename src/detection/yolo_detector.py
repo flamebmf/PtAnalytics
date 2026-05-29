@@ -19,6 +19,7 @@ class YoloDetector:
         imgsz: int = 640,
         workers: int | None = None,
         backend: str = "torch",
+        min_bbox_size: int = 20,
     ):
         if workers:
             os.environ.setdefault("OMP_NUM_THREADS", str(workers))
@@ -31,6 +32,7 @@ class YoloDetector:
         self.classes = classes or [0, 1, 2, 3, 5, 7]
         self.imgsz = imgsz
         self.backend = backend
+        self.min_bbox_size = min_bbox_size
 
         local_path = self._find_model(model_path)
         self.model = self._load_model(local_path)
@@ -87,9 +89,14 @@ class YoloDetector:
             verbose=False,
         )
         detections = []
+        min_sz = self.min_bbox_size
         if results[0].boxes is not None:
             for box in results[0].boxes:
                 x1, y1, x2, y2 = box.xyxy[0].tolist()
+                w = x2 - x1
+                h = y2 - y1
+                if w < min_sz or h < min_sz:
+                    continue
                 detections.append({
                     "bbox": (int(x1), int(y1), int(x2), int(y2)),
                     "confidence": float(box.conf[0]),

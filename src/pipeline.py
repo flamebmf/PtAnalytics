@@ -51,6 +51,7 @@ class CameraPipeline:
         )
         self.motion_skip = camera_config.get("motion_skip_seconds", mot_cfg.get("skip_seconds", 1.0))
         self.motion_enabled = camera_config.get("motion_enabled", mot_cfg.get("enabled", True))
+        self._frame_interval = 1.0 / max(fps, 1) if fps > 0 else None
 
         # Detector (camera config overrides global settings)
         det_cfg = settings.get("detector", {})
@@ -144,7 +145,7 @@ class CameraPipeline:
         empty_count = 0
         try:
             while not self._stop:
-                _t_read = time()
+                _t_read_start = _t_read = time()
                 frame: Optional[np.ndarray] = await loop.run_in_executor(
                     None, self.reader.read, 1.0
                 )
@@ -302,6 +303,12 @@ class CameraPipeline:
                         f"det={_t_det:.2f}s track+post={_t_post:.2f}s "
                         f"total={_t_mot+_t_det+_t_post:.2f}s"
                     )
+
+                if self._frame_interval is not None:
+                    elapsed = time() - _t_read_start
+                    remaining = self._frame_interval - elapsed
+                    if remaining > 0:
+                        await asyncio.sleep(remaining)
 
         except Exception as e:
             logger.exception(f"Pipeline {self.cam_name} error: {e}")
@@ -507,3 +514,45 @@ class CameraPipeline:
     def stop(self):
         self._stop = True
         self.reader.stop()
+
+    async def reload_detector(self, model_path: str):
+        """Hot-reload detector model after fine-tuning."""
+        from pathlib import Path
+        path = str(Path(model_path).resolve())
+        logger.info(f"[{self.cam_name}] Reloading detector model: {path}")
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._reload_model_sync, path)
+
+    def _reload_model_sync(self, model_path: str):
+        from ultralytics import YOLO
+        old_model = self.detector.model
+        try:
+            self.detector.model = YOLO(model_path)
+            logger.info(f"[{self.cam_name}] Detector model reloaded")
+        except Exception as e:
+            logger.error(f"[{self.cam_name}] Model reload failed: {e}")
+            self.detector.model = old_model
+
+    async def reconfigure(self, camera_config: dict, settings: dict):
+        """Update detector, tracker, motion settings from new config without restarting."""
+        det_cfg = settings.get("detector", {})
+        cam_det = camera_config.get("detector", {})
+        self.detector.confidence = cam_det.get("confidence", det_cfg.get("confidence", 0.6))
+        self.detector.iou = cam_det.get("iou", det_cfg.get("iou", 0.45))
+        self.detector.classes = cam_det.get("classes", det_cfg.get("classes"))
+        self.detector.imgsz = cam_det.get("imgsz", det_cfg.get("imgsz", 1280))
+        self.detector.min_bbox_size = cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40))
+
+        mot_cfg = settings.get("motion", {})
+        self.motion_skip = camera_config.get("motion_skip_seconds", mot_cfg.get("skip_seconds", 1.0))
+        self.motion_enabled = camera_config.get("motion_enabled", mot_cfg.get("enabled", True))
+        fps = camera_config.get("fps", settings.get("app", {}).get("fps", 10))
+        self._frame_interval = 1.0 / max(fps, 1) if fps > 0 else None
+
+        trk_cfg = settings.get("tracker", {})
+        self.tracker.max_age = trk_cfg.get("max_age", 30)
+        self.tracker.n_init = trk_cfg.get("n_init", 3)
+        self.track_depart_timeout = trk_cfg.get("depart_timeout", 3.0)
+
+        logger.info(f"[{self.cam_name}] Reconfigured: conf={self.detector.confidence} "
+                    f"fps={fps} imgsz={self.detector.imgsz}")

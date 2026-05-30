@@ -35,21 +35,30 @@ class YoloDetector:
         self.min_bbox_size = min_bbox_size
 
         local_path = self._find_model(model_path)
+        # Prefer fine-tuned model if available
+        fine_tuned = os.path.join(os.path.dirname(local_path), "fine-tuned.pt")
+        if os.path.isfile(fine_tuned):
+            logger.info(f"YOLO: using fine-tuned model {fine_tuned}")
+            local_path = fine_tuned
         self.model = self._load_model(local_path)
-        logger.info(f"YOLO: {model_path} device={device} imgsz={imgsz} workers={workers or 'default'} backend={backend}")
+        logger.info(f"YOLO: {os.path.basename(local_path)} device={device} imgsz={imgsz} workers={workers or 'default'} backend={backend}")
 
     def _find_model(self, name: str) -> str:
         if os.path.isfile(name):
             return os.path.abspath(name)
-        for d in [os.getcwd(), os.path.expanduser("~/.config/ultralytics"),
-                   os.environ.get("YOLO_CONFIG_DIR", ""),
-                   "/app/models/ultralytics", "/app/models"]:
+        yolo_dir = os.environ.get("YOLO_CONFIG_DIR", "")
+        search = [yolo_dir] if yolo_dir else []
+        for d in search + [
+            os.path.join(os.environ.get("YOLO_CONFIG_DIR", "/app/models"), ".."),
+            "/app/models/ultralytics", "/app/models",
+            os.path.expanduser("~/.config/ultralytics"),
+        ]:
             if not d:
                 continue
             p = os.path.join(d, name)
             if os.path.isfile(p):
                 return os.path.abspath(p)
-        return name
+        return os.path.join(yolo_dir or "/app/models", name)
 
     def _load_model(self, model_path: str) -> YOLO:
         if self.backend == "openvino":

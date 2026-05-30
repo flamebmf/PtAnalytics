@@ -65,9 +65,9 @@ class StorageRepository:
                 select(TrackedObject).where(
                     TrackedObject.camera_id == camera_id,
                     TrackedObject.track_id == track_id,
-                )
+                ).order_by(TrackedObject.last_seen.desc()).limit(1)
             )
-            obj = result.scalar_one_or_none()
+            obj = result.scalars().first()
 
             ts = self._db_timestamp(timestamp)
             if obj:
@@ -274,6 +274,214 @@ class StorageRepository:
                 select(func.count()).where(FrameCapture.object_id == object_id)
             )
             return result.scalar() or 0
+
+    async def list_grouped(
+        self,
+        camera_id: Optional[str] = None,
+        class_name: Optional[str] = None,
+        show_ignored: bool = False,
+        sort: str = "-last_seen",
+    ) -> dict:
+        async with await get_session() as session:
+            from sqlalchemy import asc, desc, func as sqfunc
+            # Named groups
+            named = select(
+                TrackedObject.name,
+                sqfunc.count(TrackedObject.id).label("count"),
+                sqfunc.array_agg(TrackedObject.id).label("obj_ids"),
+                sqfunc.array_agg(TrackedObject.camera_id).label("cameras"),
+                sqfunc.array_agg(TrackedObject.class_name).label("classes"),
+                sqfunc.max(TrackedObject.last_seen).label("last_seen"),
+                sqfunc.bool_or(TrackedObject.ignored).label("any_ignored"),
+            ).where(
+                TrackedObject.name.isnot(None),
+                TrackedObject.name != "",
+            )
+            if camera_id:
+                named = named.where(TrackedObject.camera_id == camera_id)
+            if class_name:
+                named = named.where(TrackedObject.class_name == class_name)
+            if not show_ignored:
+                named = named.where(TrackedObject.ignored != True)
+            order_fn = desc if sort.startswith("-") else asc
+            col_name = sort.lstrip("-")
+            order_col = sqfunc.max(getattr(TrackedObject, col_name, TrackedObject.last_seen))
+            named = named.group_by(TrackedObject.name).order_by(order_fn(order_col))
+            result = await session.execute(named)
+            groups = []
+            for row in result.all():
+                cameras = list(dict.fromkeys(row.cameras))
+                classes = list(dict.fromkeys(row.classes))
+                obj_ids = [str(oid) for oid in row.obj_ids]
+                groups.append({
+                    "name": row.name,
+                    "count": row.count,
+                    "camera_ids": cameras,
+                    "class_names": classes,
+                    "last_seen": row.last_seen.isoformat() if row.last_seen else None,
+                    "obj_ids": obj_ids,
+                    "any_ignored": row.any_ignored,
+                })
+
+            # Unnamed items
+            unnamed = select(TrackedObject).where(
+                (TrackedObject.name.is_(None)) | (TrackedObject.name == "")
+            )
+            if camera_id:
+                unnamed = unnamed.where(TrackedObject.camera_id == camera_id)
+            if class_name:
+                unnamed = unnamed.where(TrackedObject.class_name == class_name)
+            if not show_ignored:
+                unnamed = unnamed.where(TrackedObject.ignored != True)
+            order_fn2 = desc if sort.startswith("-") else asc
+            unnamed = unnamed.order_by(order_fn2(getattr(TrackedObject, col_name, TrackedObject.last_seen)))
+            unnamed = unnamed.limit(200)
+            result2 = await session.execute(unnamed)
+            items = []
+            for obj in result2.scalars():
+                items.append({
+                    "id": str(obj.id),
+                    "camera_id": obj.camera_id,
+                    "class_name": obj.class_name,
+                    "name": obj.name,
+                    "ignored": obj.ignored,
+                    "last_seen": obj.last_seen.isoformat() if obj.last_seen else None,
+                })
+
+            return {"groups": groups, "items": items}
+
+    async def reclassify_frame(self, frame_id: uuid.UUID, new_class: str) -> Optional[dict]:
+        """Move frame to a new or existing TrackedObject with the given class."""
+        async with await get_session() as session:
+            result = await session.execute(
+                select(FrameCapture).where(FrameCapture.id == frame_id)
+            )
+            fc = result.scalar_one_or_none()
+            if fc is None:
+                return None
+
+            old_obj = await session.execute(
+                select(TrackedObject).where(TrackedObject.id == fc.object_id)
+            )
+            old_obj = old_obj.scalar_one_or_none()
+            if old_obj is None:
+                return None
+
+            # Find or create a target object for the new class
+            target = await session.execute(
+                select(TrackedObject).where(
+                    TrackedObject.camera_id == old_obj.camera_id,
+                    TrackedObject.track_id == old_obj.track_id,
+                    TrackedObject.class_name == new_class,
+                )
+            )
+            target_obj = target.scalar_one_or_none()
+            if target_obj is None:
+                target_obj = TrackedObject(
+                    camera_id=old_obj.camera_id,
+                    track_id=old_obj.track_id,
+                    class_name=new_class,
+                    name=old_obj.name,
+                    first_seen=self._db_timestamp(fc.timestamp),
+                    last_seen=self._db_timestamp(fc.timestamp),
+                    appearance_count=1,
+                )
+                session.add(target_obj)
+                await session.flush()
+
+            fc.object_id = target_obj.id
+            if old_obj.name and not target_obj.name:
+                target_obj.name = old_obj.name
+            fc_ts = self._db_timestamp(fc.timestamp)
+            target_obj.last_seen = fc_ts
+            target_obj.appearance_count = (target_obj.appearance_count or 0) + 1
+
+            # Recalc old object
+            from sqlalchemy import func
+            cnt = await session.execute(
+                select(func.count(FrameCapture.id)).where(FrameCapture.object_id == old_obj.id)
+            )
+            old_obj.appearance_count = cnt.scalar() or 0
+            max_ts = await session.execute(
+                select(func.max(FrameCapture.timestamp)).where(FrameCapture.object_id == old_obj.id)
+            )
+            max_val = max_ts.scalar()
+            old_obj.last_seen = self._db_timestamp(max_val) if max_val else old_obj.last_seen
+
+            await session.commit()
+            return {"frame_id": str(fc.id), "new_object_id": str(target_obj.id), "class_name": new_class}
+
+    async def move_frame_to_name(self, frame_id: uuid.UUID, target_name: str) -> Optional[dict]:
+        """Move frame to an object with the given name (create if needed)."""
+        async with await get_session() as session:
+            result = await session.execute(
+                select(FrameCapture).where(FrameCapture.id == frame_id)
+            )
+            fc = result.scalar_one_or_none()
+            if fc is None:
+                return None
+            old_obj = await session.execute(
+                select(TrackedObject).where(TrackedObject.id == fc.object_id)
+            )
+            old_obj = old_obj.scalar_one_or_none()
+            if old_obj is None:
+                return None
+            # Find existing object with target name on same camera
+            target = await session.execute(
+                select(TrackedObject).where(
+                    TrackedObject.name == target_name,
+                    TrackedObject.camera_id == old_obj.camera_id,
+                ).limit(1)
+            )
+            target_obj = target.scalar_one_or_none()
+            if target_obj is None:
+                target_obj = TrackedObject(
+                    camera_id=old_obj.camera_id,
+                    track_id=old_obj.track_id,
+                    class_name=old_obj.class_name,
+                    name=target_name,
+                    first_seen=self._db_timestamp(fc.timestamp),
+                    last_seen=self._db_timestamp(fc.timestamp),
+                    appearance_count=1,
+                )
+                session.add(target_obj)
+                await session.flush()
+            fc.object_id = target_obj.id
+            fc_ts = self._db_timestamp(fc.timestamp)
+            target_obj.last_seen = fc_ts
+            target_obj.appearance_count = (target_obj.appearance_count or 0) + 1
+            # Recalc old
+            from sqlalchemy import func
+            cnt = await session.execute(select(func.count(FrameCapture.id)).where(FrameCapture.object_id == old_obj.id))
+            old_obj.appearance_count = cnt.scalar() or 0
+            max_ts = await session.execute(select(func.max(FrameCapture.timestamp)).where(FrameCapture.object_id == old_obj.id))
+            max_val = max_ts.scalar()
+            old_obj.last_seen = self._db_timestamp(max_val) if max_val else old_obj.last_seen
+            await session.commit()
+            return {"frame_id": str(fc.id), "target_name": target_name, "target_object_id": str(target_obj.id)}
+
+    async def get_latest_frame(self) -> Optional[dict]:
+        """Return the most recently saved frame with its object info."""
+        async with await get_session() as session:
+            result = await session.execute(
+                select(FrameCapture, TrackedObject)
+                .join(TrackedObject, FrameCapture.object_id == TrackedObject.id)
+                .order_by(FrameCapture.timestamp.desc())
+                .limit(1)
+            )
+            row = result.first()
+            if row is None:
+                return None
+            fc, obj = row
+            return {
+                "id": str(fc.id),
+                "image": f"/frames/{Path(fc.image_path).name}",
+                "camera_id": obj.camera_id,
+                "class_name": obj.class_name,
+                "name": obj.name,
+                "confidence": fc.confidence,
+                "timestamp": fc.timestamp.isoformat() if fc.timestamp else None,
+            }
 
     async def list_objects(
         self,

@@ -6,72 +6,79 @@
 <title>CAM — Video Analytics</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
 <style>
-body { font-size: .875rem; }
-.table th { white-space: nowrap; user-select: none; cursor: pointer; }
+body { font-size: .75rem; }
+.table { font-size: .7rem; margin-bottom: 0; }
+.table th { white-space: nowrap; user-select: none; cursor: pointer; padding: 2px 6px; font-size: .65rem; }
 .table th:hover { background: var(--bs-gray-800); }
-.table td { vertical-align: middle; }
+.table td { vertical-align: middle; padding: 1px 6px; }
+.table tr { line-height: 1.1; }
 .thumb { width: 120px; height: 80px; object-fit: cover; border-radius: 4px; cursor: pointer; transition: .2s; }
 .thumb:hover { transform: scale(1.05); box-shadow: 0 0 12px rgba(0,0,0,.5); }
 #detail { display: none; }
 .pagination { margin-bottom: 0; }
-.filter-row { background: var(--bs-gray-900); border-radius: 8px; padding: 12px 16px; }
-.table-scroll { max-height: calc(100vh - 280px); overflow-y: auto; }
+.filter-row { background: var(--bs-gray-900); border-radius: 6px; padding: 6px 10px; }
+.table-scroll { max-height: calc(100vh - 310px); overflow-y: auto; }
 .detail-scroll { max-height: calc(100vh - 200px); overflow-y: auto; }
-.frame-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
-.frame-card { background: var(--bs-gray-800); border-radius: 8px; padding: 8px; }
-.frame-card img { width: 100%; height: 120px; object-fit: cover; border-radius: 4px; }
+.frame-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.frame-card { background: var(--bs-gray-800); border-radius: 6px; padding: 6px; }
+.frame-card img { width: 100%; height: 100px; object-fit: cover; border-radius: 4px; }
 .loading { opacity: .5; pointer-events: none; }
+.live-preview { background: var(--bs-gray-900); border-radius: 6px; padding: 6px 10px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+.live-preview img { height: 80px; width: 120px; object-fit: cover; border-radius: 4px; border: 1px solid var(--bs-gray-700); }
+.live-preview .info { font-size: .7rem; line-height: 1.3; }
 </style>
 </head>
 <body>
 
 <div class="container-fluid py-3">
-  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
     <h4 class="mb-0">CAM — Video Analytics</h4>
     <div>
       <span class="badge fs-6 me-2" id="badge-health">—</span>
+      <button class="btn btn-sm btn-outline-warning me-1" onclick="reloadConfig()" title="Перечитать конфигурацию">↻ Config</button>
+      <button class="btn btn-sm btn-outline-info me-1" onclick="openTraining()">Дообучение</button>
+      <button class="btn btn-sm btn-outline-secondary me-1" id="btn-pause" onclick="togglePause()" title="Пауза автообновления">⏸</button>
       <a href="/" class="btn btn-sm btn-outline-secondary" onclick="event.preventDefault();location.reload()">Обновить</a>
     </div>
   </div>
 
   <!-- Filters -->
-  <div class="filter-row row g-2 align-items-end mb-3">
+  <div class="filter-row row g-1 align-items-center mb-2">
     <div class="col-auto">
-      <label class="form-label small mb-1">Камера</label>
-      <select class="form-select form-select-sm" id="filter-camera"><option value="">все</option></select>
+      <select class="form-select form-select-sm" id="filter-camera" style="width:100px"><option value="">все камеры</option></select>
     </div>
     <div class="col-auto">
-      <label class="form-label small mb-1">Класс</label>
-      <select class="form-select form-select-sm" id="filter-class"><option value="">все</option></select>
+      <select class="form-select form-select-sm" id="filter-class" style="width:90px"><option value="">все классы</option></select>
     </div>
     <div class="col-auto">
-      <label class="form-label small mb-1">Название</label>
-      <input class="form-control form-control-sm" id="filter-name" placeholder="поиск по имени..." style="width:150px">
+      <input class="form-control form-control-sm" id="filter-name" list="name-suggestions" placeholder="имя..." style="width:110px">
     </div>
     <div class="col-auto">
-      <label class="form-label small mb-1">Сортировка</label>
-      <select class="form-select form-select-sm" id="filter-sort" onchange="loadObjects(0)">
+      <select class="form-select form-select-sm" id="filter-sort" style="width:130px" onchange="loadObjects(0)">
         <option value="-last_seen">сначала новые</option>
         <option value="+last_seen">сначала старые</option>
         <option value="+first_seen">по появлению</option>
-        <option value="-first_seen">сначала новые объекты</option>
+        <option value="-first_seen">новые объекты</option>
       </select>
     </div>
-    <div class="col-auto d-flex align-items-end pb-1 gap-3">
-      <div class="form-check">
-        <input class="form-check-input" type="checkbox" id="group-by-name" onchange="loadObjects(0)">
-        <label class="form-check-label small">группировать</label>
-      </div>
-      <div class="form-check">
-        <input class="form-check-input" type="checkbox" id="show-ignored" onchange="loadObjects(0)">
-        <label class="form-check-label small">показать ignored</label>
-      </div>
+    <div class="col-auto d-flex align-items-center gap-2">
+      <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" id="group-by-name" onchange="loadObjects(0)"><label class="form-check-label small">групп.</label></div>
+      <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" id="show-ignored" onchange="loadObjects(0)"><label class="form-check-label small">ignor.</label></div>
     </div>
     <div class="col-auto">
-      <button class="btn btn-sm btn-primary" onclick="loadObjects(0)">Поиск</button>
-      <button class="btn btn-sm btn-outline-secondary" onclick="resetFilters()">Сброс</button>
+      <button class="btn btn-sm btn-primary py-0" onclick="loadObjects(0)">Поиск</button>
+      <button class="btn btn-sm btn-outline-secondary py-0" onclick="resetFilters()">Сброс</button>
     </div>
     <div class="col-auto ms-auto text-end text-muted small" id="obj-count">—</div>
+  </div>
+
+  <!-- Live preview -->
+  <div class="live-preview d-none" id="live-preview">
+    <img id="live-img" src="" alt="">
+    <div class="info flex-grow-1">
+      <div><span class="badge bg-info" id="live-class">—</span> <span class="text-info fw-semibold" id="live-name">—</span> <code class="small" id="live-cam">—</code></div>
+      <div class="text-muted"><span id="live-conf">—</span> · <span id="live-ts">—</span></div>
+    </div>
   </div>
 
   <div class="row">
@@ -108,8 +115,15 @@ body { font-size: .875rem; }
           </div>
         </div>
         <div class="input-group input-group-sm mb-2">
-          <input class="form-control form-control-sm" id="detail-name" placeholder="дать название..." maxlength="128">
+          <input class="form-control form-control-sm" id="detail-name" list="name-suggestions" placeholder="дать название..." maxlength="128">
           <button class="btn btn-outline-success btn-sm" onclick="saveName()">OK</button>
+        </div>
+        <div class="input-group input-group-sm mb-2 d-none" id="group-class-row">
+          <span class="input-group-text">класс группы</span>
+          <select class="form-select form-select-sm" id="group-class-select">
+            <option>person</option><option>bicycle</option><option>car</option><option>motorcycle</option><option>bus</option><option>truck</option>
+          </select>
+          <button class="btn btn-outline-primary btn-sm" onclick="setGroupClass()">Применить</button>
         </div>
         <div class="text-muted small mb-2" id="detail-meta">—</div>
         <div class="frame-grid" id="frame-grid"></div>
@@ -145,13 +159,42 @@ body { font-size: .875rem; }
   </div>
 </div>
 
+<!-- Training modal -->
+<div class="modal fade" id="trainModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="mb-0">Дообучение модели</h6>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body small">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <span class="text-muted">Минимум кадров на класс: <strong id="train-min">—</strong></span>
+          <button class="btn btn-sm btn-primary" id="btn-train-all" onclick="startTraining()">Запустить все</button>
+        </div>
+        <div id="train-running" class="d-none mb-3 p-2 rounded" style="background:var(--bs-gray-800)"></div>
+        <table class="table table-sm table-dark mb-0" id="train-table">
+          <thead><tr><th>Имя</th><th>Класс</th><th>Объектов</th><th>Кадров</th><th>Готов</th><th></th></tr></thead>
+          <tbody id="train-tbody"><tr><td colspan="6" class="text-center text-muted py-3">загрузка…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Autocomplete suggestions -->
+<datalist id="name-suggestions"></datalist>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 const PAGE_SIZE = 25;
 let currentOffset = 0;
 let currentTotal = 0;
 let currentObjId = null;
+let currentGroupName = null;
 let delModal;
+let loading = false;
+let allNames = [];
 
 // ---- Health ----
 async function loadHealth() {
@@ -200,17 +243,15 @@ function resetFilters() {
 
 async function loadFilterOptions() {
   try {
-    const r = await fetch('/objects?limit=500');
+    const r = await fetch('/filters');
     const d = await r.json();
-    const cams = new Set(), cls = new Set();
-    for (const o of d.items) {
-      if (o.camera_id) cams.add(o.camera_id);
-      if (o.class_name) cls.add(o.class_name);
-    }
     const camSel = document.getElementById('filter-camera');
-    for (const c of [...cams].sort()) camSel.innerHTML += `<option value="${c}">${c}</option>`;
+    for (const c of (d.cameras || []).sort()) camSel.innerHTML += `<option value="${c}">${c}</option>`;
     const clsSel = document.getElementById('filter-class');
-    for (const c of [...cls].sort()) clsSel.innerHTML += `<option value="${c}">${c}</option>`;
+    for (const c of (d.classes || []).sort()) clsSel.innerHTML += `<option value="${c}">${c}</option>`;
+    const datalist = document.getElementById('name-suggestions');
+    datalist.innerHTML = (d.names || []).map(n => `<option value="${escapeHtml(n)}">`).join('');
+    allNames = (d.names || []).sort();
     restoreFilters();
     loadObjects(0);
   } catch { restoreFilters(); loadObjects(0); }
@@ -218,9 +259,11 @@ async function loadFilterOptions() {
 
 // ---- Objects ----
 async function loadObjects(offset) {
+  if (loading) return;
+  loading = true;
   currentOffset = offset;
   const groupByName = document.getElementById('group-by-name').checked;
-  const params = new URLSearchParams({ limit: groupByName ? 5000 : PAGE_SIZE, offset: groupByName ? 0 : offset });
+  const params = new URLSearchParams({ limit: PAGE_SIZE, offset: groupByName ? 0 : offset });
   saveFilters();
   const camera = document.getElementById('filter-camera').value;
   if (camera) params.set('camera_id', camera);
@@ -232,6 +275,7 @@ async function loadObjects(offset) {
   const sort = document.getElementById('filter-sort').value;
   if (sort !== '-last_seen') params.set('sort', sort);
   if (document.getElementById('show-ignored').checked) params.set('show_ignored', '1');
+  if (groupByName) params.set('grouped', '1');
 
   const tbody = document.getElementById('obj-tbody');
   tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">загрузка…</td></tr>';
@@ -240,21 +284,21 @@ async function loadObjects(offset) {
   try {
     const r = await fetch('/objects?' + params);
     const d = await r.json();
-    currentTotal = d.total;
-    document.getElementById('obj-count').textContent = 'всего: ' + d.total;
-
-    if (!d.items.length) {
-      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">нет объектов</td></tr>';
-      document.getElementById('obj-range').textContent = '';
-      document.getElementById('obj-pagi').innerHTML = '';
-      return;
-    }
 
     if (groupByName) {
-      renderGrouped(tbody, d.items, sort);
+      renderGrouped(tbody, d.groups || [], d.items || []);
+      document.getElementById('obj-count').textContent = 'групп: ' + (d.total || 0);
       document.getElementById('obj-range').textContent = '';
       document.getElementById('obj-pagi').innerHTML = '';
     } else {
+      currentTotal = d.total;
+      document.getElementById('obj-count').textContent = 'всего: ' + d.total;
+      if (!d.items.length) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">нет объектов</td></tr>';
+        document.getElementById('obj-range').textContent = '';
+        document.getElementById('obj-pagi').innerHTML = '';
+        return;
+      }
       renderFlat(tbody, d.items, offset);
       document.getElementById('obj-range').textContent = d.items.length
         ? (offset + 1) + '–' + (offset + d.items.length) + ' из ' + d.total : '';
@@ -264,6 +308,7 @@ async function loadObjects(offset) {
     tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">ошибка загрузки</td></tr>';
   } finally {
     document.getElementById('obj-table').classList.remove('loading');
+    loading = false;
   }
 }
 
@@ -281,43 +326,34 @@ function renderFlat(tbody, items, offset) {
   }).join('');
 }
 
-function renderGrouped(tbody, items, sortDir) {
-  const desc = !sortDir || sortDir === '-last_seen';
-  const groups = {};
-  for (const o of items) {
-    if (o.name) {
-      if (!groups[o.name]) groups[o.name] = { name: o.name, objs: [], last_seen: null };
-      groups[o.name].objs.push(o);
-      if (!groups[o.name].last_seen || o.last_seen > groups[o.name].last_seen)
-        groups[o.name].last_seen = o.last_seen;
-    }
+function renderGrouped(tbody, groups, items) {
+  let rows = [];
+  for (const g of groups) {
+    rows.push({
+      type: 'group', last: g.last_seen, name: g.name, count: g.count,
+      cameras: (g.camera_ids || []).join(', '), classes: (g.class_names || []).join(', '),
+      ids: (g.obj_ids || []).join(','),
+    });
   }
-  const rows = [];
-  for (const g of Object.values(groups)) rows.push({ type: 'group', ...g });
-  for (const o of items) if (!o.name) rows.push({ type: 'item', ...o });
-  rows.sort((a, b) => {
-    const da = new Date(a.last_seen || 0), db = new Date(b.last_seen || 0);
-    return desc ? db - da : da - db;
-  });
+  for (const o of (items || [])) {
+    rows.push({ type: 'item', last: o.last_seen, id: o.id, class_name: o.class_name, camera_id: o.camera_id });
+  }
+  rows.sort((a, b) => (b.last || '').localeCompare(a.last || ''));
   let html = '';
-  for (const row of rows) {
-    if (row.type === 'group') {
-      const cameras = [...new Set(row.objs.map(o => o.camera_id))].join(', ');
-      const classes = [...new Set(row.objs.map(o => o.class_name))].join(', ');
-      const last = row.last_seen ? row.last_seen.replace('T', ' ').slice(0, 19) : '—';
-      const ids = row.objs.map(o => o.id).join(',');
-      html += `<tr onclick="loadGroupDetail('${escapeHtml(row.name)}', '${ids}')" role="button" style="cursor:pointer" class="table-active">
-        <td class="text-nowrap"><span class="text-info fw-bold">${escapeHtml(row.name)}</span> <span class="badge bg-secondary">${row.objs.length}</span></td>
-        <td><span class="badge bg-info">${classes}</span></td>
-        <td><code>${cameras}</code></td>
+  for (const r of rows) {
+    const last = r.last ? r.last.replace('T', ' ').slice(0, 19) : '—';
+    if (r.type === 'group') {
+      html += `<tr onclick="loadGroupDetail('${escapeHtml(r.name)}', '${r.ids}')" role="button" style="cursor:pointer" class="table-active">
+        <td class="text-nowrap"><span class="text-info fw-bold">${escapeHtml(r.name)}</span> <span class="badge bg-secondary">${r.count}</span></td>
+        <td><span class="badge bg-info">${r.classes}</span></td>
+        <td><code>${r.cameras}</code></td>
         <td class="text-nowrap"><small>${last}</small></td>
       </tr>`;
     } else {
-      const last = row.last_seen ? row.last_seen.replace('T', ' ').slice(0, 19) : '—';
-      html += `<tr onclick="loadDetail('${row.id}')" role="button" style="cursor:pointer">
+      html += `<tr onclick="loadDetail('${r.id}')" role="button" style="cursor:pointer">
         <td class="text-nowrap"><span class="text-muted">—</span></td>
-        <td><span class="badge bg-info">${row.class_name}</span></td>
-        <td><code>${row.camera_id}</code></td>
+        <td><span class="badge bg-info">${r.class_name}</span></td>
+        <td><code>${r.camera_id}</code></td>
         <td class="text-nowrap"><small>${last}</small></td>
       </tr>`;
     }
@@ -340,6 +376,7 @@ function renderPagination() {
 // ---- Group Detail ----
 async function loadGroupDetail(name, ids) {
   currentObjId = ids.split(',')[0];
+  currentGroupName = name;
   const div = document.getElementById('detail');
   const grid = document.getElementById('frame-grid');
   const empty = document.getElementById('frame-empty');
@@ -348,6 +385,8 @@ async function loadGroupDetail(name, ids) {
   grid.innerHTML = '<div class="text-center text-muted py-4">загрузка…</div>';
   document.getElementById('detail-name').value = name;
   document.getElementById('detail-title').textContent = 'Группа: ' + name;
+  document.getElementById('group-class-row').classList.remove('d-none');
+  document.getElementById('btn-ignore').classList.add('d-none');
 
   try {
     const allFrames = [];
@@ -363,13 +402,19 @@ async function loadGroupDetail(name, ids) {
         const ts = f.timestamp ? f.timestamp.replace('T', ' ').slice(0, 19) : '';
         const conf = f.confidence ? (f.confidence * 100).toFixed(0) + '%' : '';
         const cam = f.camera_id || '';
+        const cls = f.class_name || '';
         return `<div class="frame-card position-relative" id="fc-${f.id}">
           <img src="${f.image}" onclick="openLightbox('${f.image}')" class="w-100" style="height:140px;object-fit:cover;border-radius:4px;cursor:pointer" loading="lazy" onerror="this.style.display='none'">
           <button class="btn btn-sm btn-outline-danger position-absolute top-0 end-0 m-1" style="font-size:10px;line-height:1;padding:2px 5px" onclick="deleteFrame('${f.id}')" title="Удалить кадр">&times;</button>
-          <div class="d-flex justify-content-between small text-muted mt-1">
+          <div class="d-flex justify-content-between small text-muted mt-1 mb-1">
             <span>${cam} ${conf}</span>
             <span>${ts.slice(11, 19)}</span>
           </div>
+          <select class="form-select form-select-sm" style="font-size:10px;padding:1px 4px" onchange="reclassifyFrame('${f.id}', this.value, '${cls}')">
+            <option value="">класс</option>
+            ${['person','bicycle','car','motorcycle','bus','truck'].map(c => `<option value="${c}" ${c === cls ? 'selected' : ''}>${c}</option>`).join('')}
+          </select>
+          ${nameInputHtml(f.id, '')}
         </div>`;
       }).join('');
     } else {
@@ -396,6 +441,8 @@ async function loadDetail(id) {
     const o = await r.json();
     document.getElementById('detail-title').textContent = o.class_name + ' @ ' + o.camera_id;
     document.getElementById('detail-name').value = o.name || '';
+    document.getElementById('group-class-row').classList.add('d-none');
+    document.getElementById('btn-ignore').classList.remove('d-none');
     document.getElementById('detail-meta').innerHTML = [
       o.ignored ? '<span class="badge bg-warning text-dark">ignored</span>' : '',
       'замечен: ' + (o.last_seen ? o.last_seen.replace('T', ' ').slice(0, 19) : '—'),
@@ -414,10 +461,15 @@ async function loadDetail(id) {
         return `<div class="frame-card position-relative" id="fc-${f.id}">
           <img src="${f.image}" onclick="openLightbox('${f.image}')" class="w-100" style="height:140px;object-fit:cover;border-radius:4px;cursor:pointer" loading="lazy" onerror="this.style.display='none'">
           <button class="btn btn-sm btn-outline-danger position-absolute top-0 end-0 m-1" style="font-size:10px;line-height:1;padding:2px 5px" onclick="deleteFrame('${f.id}')" title="Удалить кадр">&times;</button>
-          <div class="d-flex justify-content-between small text-muted mt-1">
+          <div class="d-flex justify-content-between small text-muted mt-1 mb-1">
             <span>${conf}</span>
             <span>${ts.slice(11, 19)}</span>
           </div>
+          <select class="form-select form-select-sm" style="font-size:10px;padding:1px 4px" onchange="reclassifyFrame('${f.id}', this.value, '${o.class_name}')">
+            <option value="">класс</option>
+            ${['person','bicycle','car','motorcycle','bus','truck'].map(c => `<option value="${c}" ${c === o.class_name ? 'selected' : ''}>${c}</option>`).join('')}
+          </select>
+          ${nameInputHtml(f.id, '')}
         </div>`;
       }).join('');
     } else {
@@ -431,7 +483,30 @@ async function loadDetail(id) {
   }
 }
 
-function closeDetail() { document.getElementById('detail').style.display = 'none'; currentObjId = null; }
+function closeDetail() {
+  document.getElementById('detail').style.display = 'none';
+  document.getElementById('group-class-row').classList.add('d-none');
+  document.getElementById('btn-ignore').classList.remove('d-none');
+  currentObjId = null;
+  currentGroupName = null;
+}
+
+// ---- Group class ----
+async function setGroupClass() {
+  if (!currentGroupName) return;
+  const cls = document.getElementById('group-class-select').value;
+  if (!cls) return;
+  try {
+    const r = await fetch('/objects/reclassify-group', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: currentGroupName, class_name: cls }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error();
+    alert('Обновлено: ' + d.updated + ' из ' + d.total + ' объектов → ' + cls);
+  } catch { alert('Ошибка'); }
+}
 
 // ---- Edit name ----
 async function saveName() {
@@ -444,7 +519,13 @@ async function saveName() {
       body: JSON.stringify({ name }),
     });
     if (!r.ok) throw new Error();
-    loadObjects(currentOffset);
+    const scrollY = document.querySelector('.table-scroll')?.scrollTop || 0;
+    await loadObjects(currentOffset);
+    refreshNameSuggestions();
+    setTimeout(() => {
+      const el = document.querySelector('.table-scroll');
+      if (el) el.scrollTop = scrollY;
+    }, 50);
   } catch { alert('Ошибка сохранения'); }
 }
 
@@ -496,13 +577,250 @@ function openLightbox(src) {
 // ---- Utils ----
 function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
+// ---- Config reload ----
+async function reloadConfig() {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const r = await fetch('/config/reload', { method: 'POST' });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      loadFilterOptions();
+      btn.className = 'btn btn-sm btn-outline-success';
+      btn.textContent = '✓ OK';
+    } else {
+      btn.className = 'btn btn-sm btn-outline-danger';
+      btn.textContent = '✗ Error';
+    }
+  } catch {
+    btn.className = 'btn btn-sm btn-outline-danger';
+    btn.textContent = '✗ Error';
+  }
+  setTimeout(() => { btn.className = 'btn btn-sm btn-outline-warning'; btn.textContent = '↻ Config'; btn.disabled = false; }, 2000);
+}
+
+// ---- Move frame to group ----
+function nameInputHtml(frameId, currentName) {
+  return `<input class="form-control form-control-sm mt-1" style="font-size:10px;padding:1px 4px" list="name-suggestions" placeholder="в группу..." value="${escapeHtml(currentName || '')}" onfocus="this.select()" onchange="moveFrameToName('${frameId}', this)">`;
+}
+
+async function moveFrameToName(frameId, input) {
+  const name = input.value.trim();
+  if (!name) return;
+  try {
+    const r = await fetch('/frames/' + frameId + '/reclassify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (!r.ok) throw new Error();
+    document.getElementById('fc-' + frameId)?.remove();
+    refreshNameSuggestions();
+  } catch { alert('Ошибка'); }
+}
+
+async function refreshNameSuggestions() {
+  try {
+    const r = await fetch('/objects/names');
+    const d = await r.json();
+    const datalist = document.getElementById('name-suggestions');
+    const names = (d.names || []).map(n => n.name).sort();
+    datalist.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">`).join('');
+    allNames = names;
+  } catch {}
+}
+
+async function reclassifyFrame(frameId, newClass, oldClass) {
+  if (!newClass || newClass === oldClass) return;
+  try {
+    const r = await fetch('/frames/' + frameId + '/reclassify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ class_name: newClass }),
+    });
+    if (!r.ok) throw new Error();
+    document.getElementById('fc-' + frameId)?.remove();
+  } catch { alert('Ошибка'); }
+}
+
+// ---- Training modal ----
+let trainModal, trainPoll;
+
+async function openTraining() {
+  if (!trainModal) trainModal = new bootstrap.Modal(document.getElementById('trainModal'));
+  trainModal.show();
+  await loadTrainingCandidates();
+}
+
+async function loadTrainingCandidates() {
+  try {
+    const r = await fetch('/training/candidates');
+    const d = await r.json();
+    document.getElementById('train-min').textContent = d.min_samples;
+    const running = d.running || {};
+    renderRunning(running);
+
+    // Only rebuild table if not currently polling (to avoid blink on refreshes)
+    const tbody = document.getElementById('train-tbody');
+    tbody.innerHTML = '';
+    if (!d.candidates.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">нет именованных объектов</td></tr>';
+    } else {
+      tbody.innerHTML = d.candidates.map(c => {
+        const busy = running[c.name] && (running[c.name].status === 'collecting' || running[c.name].status === 'training');
+        const allBusy = running['__all__'] && (running['__all__'].status === 'collecting' || running['__all__'].status === 'training');
+        const disabled = !c.ready || busy || allBusy ? 'disabled' : '';
+        const badge = c.ready ? '<span class="badge bg-success">да</span>' : '<span class="badge bg-secondary">нет</span>';
+        return `<tr>
+          <td><span class="text-info fw-semibold">${escapeHtml(c.name)}</span></td>
+          <td><span class="badge bg-info">${c.class_name}</span></td>
+          <td>${c.objects}</td>
+          <td>${c.frames}</td>
+          <td>${badge}</td>
+          <td><button class="btn btn-sm btn-outline-primary" ${disabled} onclick="startTraining('${escapeHtml(c.name)}')">Запустить</button></td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Auto-poll only while training is active
+    const active = Object.values(running).some(s => s.status === 'collecting' || s.status === 'training');
+    if (active && !trainPoll) {
+      trainPoll = setInterval(pollTrainingStatus, 5000);
+    } else if (!active && trainPoll) {
+      clearInterval(trainPoll);
+      trainPoll = null;
+    }
+  } catch {}
+}
+
+async function pollTrainingStatus() {
+  try {
+    const r = await fetch('/training/status');
+    const d = await r.json();
+    const running = d.running || {};
+    renderRunning(running);
+    const active = Object.values(running).some(s => s.status === 'collecting' || s.status === 'training');
+    if (!active && trainPoll) {
+      clearInterval(trainPoll);
+      trainPoll = null;
+    }
+  } catch {}
+}
+
+async function loadTrainingCandidates() {
+  const tbody = document.getElementById('train-tbody');
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">загрузка…</td></tr>';
+  try {
+    const r = await fetch('/training/candidates');
+    const d = await r.json();
+    document.getElementById('train-min').textContent = d.min_samples;
+    renderRunning(d.running || {});
+    if (!d.candidates.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">нет именованных объектов</td></tr>';
+      return;
+    }
+    tbody.innerHTML = d.candidates.map(c => {
+      const running = (d.running || {})[c.name] || (d.running || {})['__all__'];
+      const busy = running && (running.status === 'collecting' || running.status === 'training');
+      const disabled = !c.ready || busy ? 'disabled' : '';
+      const badge = c.ready ? '<span class="badge bg-success">да</span>' : '<span class="badge bg-secondary">нет</span>';
+      return `<tr>
+        <td><span class="text-info fw-semibold">${escapeHtml(c.name)}</span></td>
+        <td><span class="badge bg-info">${c.class_name}</span></td>
+        <td>${c.objects}</td>
+        <td>${c.frames}</td>
+        <td>${badge}</td>
+        <td><button class="btn btn-sm btn-outline-primary" ${disabled} onclick="startTraining('${escapeHtml(c.name)}')">Запустить</button></td>
+      </tr>`;
+    }).join('');
+  } catch {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">ошибка</td></tr>';
+  }
+}
+
+function renderRunning(state) {
+  const div = document.getElementById('train-running');
+  const keys = Object.entries(state);
+  if (!keys.length) { div.classList.add('d-none'); return; }
+  div.classList.remove('d-none');
+  div.innerHTML = keys.map(([k, s]) => {
+    const label = k === '__all__' ? 'все' : k;
+    const st = s.status;
+    let info = st;
+    if (st === 'training' && s.epoch) info = `эпоха ${s.epoch}/${s.total_epochs} box=${s.box_loss} cls=${s.cls_loss}`;
+    if (st === 'done') info = '✓ завершено';
+    if (st === 'failed') info = '✗ ошибка: ' + (s.error || '');
+    if (st === 'skipped') info = '— пропущено: ' + (s.reason || '');
+    const clr = st === 'done' ? 'text-success' : st === 'failed' ? 'text-danger' : st === 'skipped' ? 'text-warning' : 'text-info';
+    return `<div class="${clr}"><strong>${escapeHtml(label)}</strong>: ${info}</div>`;
+  }).join('');
+  document.getElementById('btn-train-all').disabled = keys.some(([_,s]) => s.status === 'collecting' || s.status === 'training');
+}
+
+async function startTraining(name) {
+  const q = name ? '?name=' + encodeURIComponent(name) : '';
+  try {
+    const r = await fetch('/training/run' + q, { method: 'POST' });
+    if (!r.ok) { const d = await r.json(); alert(d.message || 'Ошибка'); return; }
+    await loadTrainingCandidates();
+  } catch { alert('Ошибка запуска'); }
+}
+
+// ---- Live preview ----
+async function loadLive() {
+  try {
+    const r = await fetch('/live');
+    if (!r.ok) return;
+    const d = await r.json();
+    const div = document.getElementById('live-preview');
+    div.classList.remove('d-none');
+    document.getElementById('live-img').src = d.image;
+    document.getElementById('live-class').textContent = d.class_name;
+    document.getElementById('live-name').textContent = d.name || '—';
+    document.getElementById('live-cam').textContent = d.camera_id;
+    document.getElementById('live-conf').textContent = d.confidence ? (d.confidence * 100).toFixed(0) + '%' : '—';
+    document.getElementById('live-ts').textContent = d.timestamp ? d.timestamp.replace('T', ' ').slice(0, 19) : '—';
+  } catch {}
+}
+
+// ---- Auto-refresh ----
+let autoPaused = false;
+let refreshIntervals = [];
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  refreshIntervals = [
+    setInterval(loadHealth, 30000),
+    setInterval(() => loadObjects(currentOffset), 30000),
+    setInterval(loadLive, 5000),
+  ];
+  document.getElementById('btn-pause').textContent = '⏸';
+  autoPaused = false;
+}
+
+function stopAutoRefresh() {
+  for (const id of refreshIntervals) clearInterval(id);
+  refreshIntervals = [];
+}
+
+function togglePause() {
+  if (autoPaused) {
+    startAutoRefresh();
+  } else {
+    stopAutoRefresh();
+    document.getElementById('btn-pause').textContent = '▶';
+    autoPaused = true;
+  }
+}
+
 // ---- Init ----
 loadHealth();
 loadFilterOptions();
+loadLive();
 for (const id of ['filter-camera','filter-class','filter-name'])
   document.getElementById(id).addEventListener('change', saveFilters);
-setInterval(loadHealth, 15000);
-setInterval(() => loadObjects(currentOffset), 15000);
+startAutoRefresh();
 </script>
 </body>
 </html>

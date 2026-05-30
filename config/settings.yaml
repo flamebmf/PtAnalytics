@@ -22,9 +22,9 @@ mqtt:
   topic_prefix: cam
 
 detector:
-  model: yolo11s.pt               # YOLO model: n/s/m/l/x
+  model: yolo11m.pt              # YOLO model: n/s/m/l/x
   device: cpu                     # cpu, cuda:0, mps
-  confidence: 0.55
+  confidence: 0.6
   iou: 0.45
   imgsz: 1280
   workers: 4
@@ -57,3 +57,11 @@ face:
 dataset:
   crop_enabled: true               # save clean crops + YOLO labels for fine-tuning
   crop_interval: 60                # dedup window in seconds
+
+training:
+  enabled: true                    # auto fine-tune on user-labeled objects
+  check_interval_hours: 6          # how often to check for new training data
+  min_samples_per_class: 30        # minimum labeled crops per class to trigger training
+  epochs: 30
+  imgsz: 1280
+  base_model: yolo11m.pt

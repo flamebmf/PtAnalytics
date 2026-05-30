@@ -25,6 +25,7 @@ from .stats import StatsCollector
 from .storage import init_db, close_db, init_pgvector, init_schema, StorageRepository, get_session
 from .storage.models import TrackedObject, FrameCapture
 from .actions import ActionDispatcher, MQTTAction
+from .training import FineTuner
 
 
 async def main():
@@ -32,6 +33,11 @@ async def main():
     settings = load_settings(config_dir)
     cameras_cfg = load_cameras(config_dir)
     triggers_cfg = load_triggers(config_dir)
+
+    models_dir = Path(settings.get("app", {}).get("models_dir", "/app/models"))
+    models_dir.mkdir(parents=True, exist_ok=True)
+    if "YOLO_CONFIG_DIR" not in os.environ:
+        os.environ["YOLO_CONFIG_DIR"] = str(models_dir / "ultralytics")
 
     log_dir = Path(os.environ.get("LOG_DIR", "/app/logs"))
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -69,6 +75,20 @@ async def main():
         ]:
             try:
                 await session.execute(text(stmt))
+            except Exception:
+                pass
+        for idx_stmt in [
+            "CREATE INDEX IF NOT EXISTS idx_objects_last_seen ON tracked_objects (last_seen DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_objects_ignored_last ON tracked_objects (ignored, last_seen DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_objects_name ON tracked_objects (name) WHERE name IS NOT NULL",
+            "CREATE INDEX IF NOT EXISTS idx_objects_camera ON tracked_objects (camera_id, last_seen DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_objects_class ON tracked_objects (class_name, last_seen DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_frames_object ON frame_captures (object_id)",
+            "CREATE INDEX IF NOT EXISTS idx_frames_timestamp ON frame_captures (timestamp DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_events_object ON events (object_id)",
+        ]:
+            try:
+                await session.execute(text(idx_stmt))
             except Exception:
                 pass
         await session.commit()
@@ -151,6 +171,39 @@ async def main():
 
     tasks.append(asyncio.create_task(cleanup_loop()))
 
+    # --- Fine-tuning (manual only) ---
+    fine_tuner = FineTuner(
+        models_dir=Path(settings.get("app", {}).get("models_dir", "/app/models")),
+        data_dir=data_dir,
+        config=settings,
+    )
+    training_lock = asyncio.Lock()
+    training_state: dict[str, dict] = {}
+
+    async def _run_training(name: str | None = None):
+        async with training_lock:
+            key = name or "__all__"
+            training_state[key] = {"status": "collecting", "started_at": _local(datetime.now(timezone.utc))}
+            try:
+                dataset_dir = await fine_tuner.collect_dataset(name_filter=name)
+                if dataset_dir is None:
+                    training_state[key] = {"status": "skipped", "reason": "not enough samples", "finished_at": _local(datetime.now(timezone.utc))}
+                    return
+                training_state[key]["status"] = "training"
+
+                def on_epoch(ep: int, total: int, box: float, cls_loss: float, dfl: float):
+                    training_state[key].update({"epoch": ep, "total_epochs": total, "box_loss": round(box, 4), "cls_loss": round(cls_loss, 4)})
+
+                result = await fine_tuner.train(dataset_dir, epoch_callback=on_epoch)
+                if result:
+                    for pl in pipelines:
+                        await pl.reload_detector(result)
+                    training_state[key] = {"status": "done", "model": result, "finished_at": _local(datetime.now(timezone.utc))}
+                else:
+                    training_state[key] = {"status": "failed", "error": "training returned no model", "finished_at": _local(datetime.now(timezone.utc))}
+            except Exception as ex:
+                training_state[key] = {"status": "failed", "error": str(ex), "finished_at": _local(datetime.now(timezone.utc))}
+
     logger.info("Starting HTTP health server...")
 
     # --- Health HTTP server ---
@@ -183,14 +236,29 @@ async def main():
     async def handle_detailed(request: web.Request) -> web.Response:
         return web.json_response(stats_collector.snapshot())
 
+    async def handle_live(request: web.Request) -> web.Response:
+        frame = await repository.get_latest_frame()
+        if frame is None:
+            return web.json_response({"error": "no frames"}, status=404)
+        return web.json_response(frame)
+
     async def handle_list_objects(request: web.Request) -> web.Response:
         camera_id = request.query.get("camera_id")
         class_name = request.query.get("class_name")
         name = request.query.get("name")
         show_ignored = request.query.get("show_ignored") == "1"
+        sort = request.query.get("sort", "-last_seen")
+        grouped = request.query.get("grouped") == "1"
+
+        if grouped:
+            data = await repository.list_grouped(
+                camera_id=camera_id, class_name=class_name,
+                show_ignored=show_ignored, sort=sort,
+            )
+            return web.json_response({"total": len(data["groups"]), "groups": data["groups"], "items": data["items"]})
+
         limit = int(request.query.get("limit", 50))
         offset = int(request.query.get("offset", 0))
-        sort = request.query.get("sort", "-last_seen")
         objects = await repository.list_objects(
             camera_id=camera_id, class_name=class_name, name=name, show_ignored=show_ignored,
             limit=limit, offset=offset, sort=sort,
@@ -243,6 +311,7 @@ async def main():
                     "bbox": [f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2],
                     "confidence": f.confidence,
                     "timestamp": _local(f.timestamp),
+                    "class_name": obj.class_name,
                 }
                 for f in frames
             ],
@@ -278,6 +347,36 @@ async def main():
             return web.json_response({"error": "not found"}, status=404)
         return web.json_response({"status": "deleted"})
 
+    async def handle_reclassify_frame(request: web.Request) -> web.Response:
+        frame_id = uuid.UUID(request.match_info["id"])
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"error": "invalid JSON"}, status=400)
+        new_class = body.get("class_name", "").strip()
+        if new_class:
+            result = await repository.reclassify_frame(frame_id, new_class)
+        else:
+            target_name = body.get("name", "").strip()
+            if not target_name:
+                return web.json_response({"error": "class_name or name required"}, status=400)
+            result = await repository.move_frame_to_name(frame_id, target_name)
+        if result is None:
+            return web.json_response({"error": "not found"}, status=404)
+        return web.json_response(result)
+
+    async def handle_reclassify_group(request: web.Request) -> web.Response:
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"error": "invalid JSON"}, status=400)
+        name = body.get("name", "").strip()
+        new_class = body.get("class_name", "").strip()
+        if not name or not new_class:
+            return web.json_response({"error": "name and class_name required"}, status=400)
+        data = await repository.reclassify_group(name, new_class)
+        return web.json_response(data)
+
     async def handle_get_frame(request: web.Request) -> web.Response:
         filename = request.match_info["filename"]
         if ".." in filename or "/" in filename or "\\" in filename:
@@ -299,9 +398,18 @@ async def main():
     health_app.router.add_get("/health", handle_health)
     health_app.router.add_get("/stats", handle_stats)
     health_app.router.add_get("/stats/detailed", handle_detailed)
+    health_app.router.add_get("/live", handle_live)
     async def handle_list_names(request: web.Request) -> web.Response:
         names = await repository.list_object_names()
         return web.json_response({"names": names})
+
+    async def handle_filters(request: web.Request) -> web.Response:
+        names = await repository.list_object_names()
+        return web.json_response({
+            "cameras": [s.camera_id for s in stats_collector._pipelines.values() if s.running],
+            "classes": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
+            "names": [n["name"] for n in names],
+        })
 
     async def handle_ignore_object(request):
         obj_id = uuid.UUID(request.match_info["id"])
@@ -321,13 +429,100 @@ async def main():
                 pl.mark_track_ignored(camera_id=obj.camera_id, track_id=obj.track_id)
         return web.json_response({"ok": True, "ignored": True})
 
+    async def handle_training_status(request: web.Request) -> web.Response:
+        total = await fine_tuner.count_labeled_samples()
+        return web.json_response({
+            "enabled": fine_tuner.enabled,
+            "labeled_samples": total,
+            "min_samples_per_class": fine_tuner.min_samples,
+            "running": training_state,
+        })
+
+    async def handle_training_candidates(request: web.Request) -> web.Response:
+        candidates = await fine_tuner.list_candidates()
+        return web.json_response({"candidates": candidates, "min_samples": fine_tuner.min_samples, "running": training_state})
+
+    async def handle_training_trigger(request: web.Request) -> web.Response:
+        name = request.query.get("name") or None
+        key = name or "__all__"
+        if training_state.get(key, {}).get("status") in ("collecting", "training"):
+            return web.json_response({"status": "error", "message": "already running"}, status=409)
+        asyncio.create_task(_run_training(name))
+        return web.json_response({"status": "started", "name": name or "all"})
+
+    async def handle_config_reload(request: web.Request) -> web.Response:
+        nonlocal settings, cameras_cfg, triggers_cfg
+        logger.info("Reloading configuration...")
+        try:
+            new_settings = load_settings(config_dir)
+            new_cameras_cfg = load_cameras(config_dir)
+            new_triggers_cfg = load_triggers(config_dir)
+        except Exception as e:
+            logger.error(f"Config reload failed: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+        # Update triggers
+        dispatcher.load_triggers(new_triggers_cfg.get("triggers", []))
+        logger.info("Triggers reloaded")
+
+        # Update existing pipelines with new detector/tracker settings
+        new_cam_map = {c["id"]: c for c in new_cameras_cfg.get("cameras", [])}
+        old_ids = {pl.cam_id for pl in pipelines}
+        new_ids = set(new_cam_map.keys())
+
+        # Stop removed cameras
+        for pl in list(pipelines):
+            if pl.cam_id not in new_ids:
+                logger.info(f"Stopping pipeline for removed camera: {pl.cam_id}")
+                pl.stop()
+                pipelines.remove(pl)
+                stats_collector._pipelines.pop(pl.cam_id, None)
+
+        # Update existing or reconfigure
+        for pl in pipelines:
+            if pl.cam_id in new_cam_map:
+                await pl.reconfigure(new_cam_map[pl.cam_id], new_settings)
+                logger.info(f"Pipeline {pl.cam_id} reconfigured")
+
+        # Add new cameras
+        for cam_id in new_ids - old_ids:
+            cam_cfg = new_cam_map[cam_id]
+            pipeline = CameraPipeline(
+                camera_config=cam_cfg,
+                settings=new_settings,
+                repository=repository,
+                dispatcher=dispatcher,
+            )
+            pipelines.append(pipeline)
+            stats_collector._pipelines[pipeline.cam_id] = pipeline.stats
+            asyncio.create_task(pipeline.run())
+            logger.info(f"Added pipeline for new camera: {cam_id}")
+
+        settings = new_settings
+        cameras_cfg = new_cameras_cfg
+        triggers_cfg = new_triggers_cfg
+        return web.json_response({
+            "status": "ok",
+            "cameras": len(pipelines),
+            "cameras_added": list(new_ids - old_ids),
+            "cameras_removed": list(old_ids - new_ids),
+        })
+
+    health_app.router.add_get("/training/status", handle_training_status)
+    health_app.router.add_get("/training/candidates", handle_training_candidates)
+    health_app.router.add_post("/training/run", handle_training_trigger)
+    health_app.router.add_post("/config/reload", handle_config_reload)
+
     health_app.router.add_get("/objects", handle_list_objects)
     health_app.router.add_get("/objects/names", handle_list_names)
+    health_app.router.add_get("/filters", handle_filters)
     health_app.router.add_get("/objects/{id}", handle_get_object)
     health_app.router.add_patch("/objects/{id}", handle_patch_object)
     health_app.router.add_delete("/objects/{id}", handle_delete_object)
     health_app.router.add_post("/objects/{id}/ignore", handle_ignore_object)
     health_app.router.add_delete("/frames/{id}", handle_delete_frame)
+    health_app.router.add_post("/frames/{id}/reclassify", handle_reclassify_frame)
+    health_app.router.add_post("/objects/reclassify-group", handle_reclassify_group)
     health_app.router.add_get("/frames/{filename:.+}", handle_get_frame)
 
     runner = web.AppRunner(health_app)

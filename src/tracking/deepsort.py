@@ -2,6 +2,7 @@ from typing import Optional
 
 import cv2
 import numpy as np
+from collections import Counter
 from loguru import logger
 
 
@@ -13,6 +14,8 @@ class KalmanBoxTracker:
         x1, y1, x2, y2 = bbox
         self.class_id = class_id
         self.class_name = class_name
+        self._class_votes: list[int] = [class_id]
+        self._class_names: dict[int, str] = {class_id: class_name}
         self.kf = cv2.KalmanFilter(7, 4)
         self.kf.transitionMatrix = np.array([
             [1, 0, 0, 0, 1, 0, 0],
@@ -189,7 +192,11 @@ class DeepSortTracker:
             unmatched_trks = list(range(len(self.trackers)))
 
         for d_idx, t_idx in matched:
-            self.trackers[t_idx].update(detections[d_idx]["bbox"])
+            trk = self.trackers[t_idx]
+            trk.update(detections[d_idx]["bbox"])
+            det = detections[d_idx]
+            trk._class_votes.append(det["class_id"])
+            trk._class_names[det["class_id"]] = det["class_name"]
 
         for d_idx in unmatched_dets:
             det = detections[d_idx]
@@ -202,12 +209,18 @@ class DeepSortTracker:
         for trk in self.trackers:
             if trk.time_since_update < max_missed:
                 is_confirmed = trk.hits >= self.n_init
-                # Find matching detection for confidence
                 conf = 0.0
                 for det in detections:
                     if iou(det["bbox"], tuple(trk.get_state())) > 0.5:
                         conf = det["confidence"]
                         break
+                if len(trk._class_votes) > 1:
+                    top_two = Counter(trk._class_votes).most_common(2)
+                    best_id, best_cnt = top_two[0]
+                    second_cnt = top_two[1][1] if len(top_two) > 1 else 0
+                    if best_cnt >= second_cnt + 2 and best_id != trk.class_id:
+                        trk.class_id = best_id
+                        trk.class_name = trk._class_names.get(best_id, trk.class_name)
                 results.append({
                     "bbox": tuple(int(v) for v in trk.get_state()),
                     "track_id": trk.id,

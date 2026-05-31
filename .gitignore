@@ -12,6 +12,12 @@ data/frames/*.png
 models/*.pt
 models/*.onnx
 
+# Training artifacts (keep fine-tuned.pt)
+training/extracted/
+training/models/
+training/dataset-*.zip
+training/yolo*.pt
+
 # IDE
 .idea/
 .vscode/

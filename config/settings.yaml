@@ -1,67 +1,84 @@
 # Global application settings
 app:
   name: cam
-  data_dir: /data/frames          # frame image storage
-  models_dir: /app/models         # YOLO, InsightFace models cache
-  log_dir: /app/logs              # log files storage
+  data_dir: /data/frames
+  models_dir: /app/models
+  log_dir: /app/logs
   log_level: INFO
   debug: false
-  ffmpeg_read_attempts: 1024      # OpenCV FFmpeg max reads per frame (increase for streams with audio)
+  ffmpeg_read_attempts: 1024
+
+general:
+  cleanup_interval_seconds: 300     # periodic orphan cleanup
+  stats_log_interval_seconds: 30    # periodic STATS log
+  health_port: 8090
 
 database:
-  host: localhost                    # переопределяется через DB_HOST env
-  port: 5432                         # переопределяется через DB_PORT env
-  name: cam                          # переопределяется через DB_NAME env
-  user: cam                          # переопределяется через DB_USER env
-  password: ""                       # переопределяется через DB_PASSWORD env
+  host: localhost
+  port: 5432
+  name: cam
+  user: cam
+  password: ""
 
 mqtt:
-  host: localhost                    # переопределяется через MQTT_HOST env
-  port: 1883                         # переопределяется через MQTT_PORT env
+  enabled: false                    # MQTT integration (requires paho-mqtt)
+  host: localhost
+  port: 1883
   client_id: cam-analyzer
   topic_prefix: cam
 
 detector:
-  model: yolo11m.pt              # YOLO model: n/s/m/l/x
-  device: cpu                     # cpu, cuda:0, mps
+  model: yolo11m.pt
+  device: cpu
   confidence: 0.6
   iou: 0.45
   imgsz: 1280
   workers: 4
-  backend: torch                # torch, openvino
-  classes: [0, 1, 2, 3, 5, 7]   # person, bicycle, car, motorcycle, bus, truck
-  min_bbox_size: 40             # detections smaller than this (w or h) are discarded
+  backend: torch
+  classes: [0, 1, 2, 3, 5, 7]
+  min_bbox_size: 40
 
 tracker:
-  max_age: 30                     # frames to keep dead tracks
-  n_init: 3                       # confirmations needed
+  max_age: 30
+  n_init: 3
   nn_budget: 100
-  depart_timeout: 10.0            # seconds after a track disappears to fire departed event
+  depart_timeout: 10.0
+  frame_buffer_size: 30            # frames buffered for best entry/exit selection
 
 motion:
-  threshold: 0.15                 # fraction of changed pixels to trigger
-  skip_seconds: 0.0               # minimum interval between processed frames
-  method: mog2                    # mog2 or frame_diff
-  resize_to: [640, 360]           # resize frame for motion detection
+  threshold: 0.005
+  skip_seconds: 0.0
+  method: mog2
+  resize_to: [640, 360]
 
 lpr:
   enabled: true
   min_confidence: 0.6
-  plate_size: n              # n/s/m — YOLO plate model size (nano/small/medium)
+  plate_size: n
 
 face:
   enabled: true
   min_confidence: 0.5
-  search_threshold: 0.6           # cosine similarity threshold for face match
+  search_threshold: 0.6
+
+vmr:
+  enabled: true                     # vehicle make & model recognition (CLIP)
+  min_confidence: 0.3               # minimum similarity score for brand match
 
 dataset:
-  crop_enabled: true               # save clean crops + YOLO labels for fine-tuning
-  crop_interval: 60                # dedup window in seconds
+  crop_enabled: true
+  crop_interval: 60
 
 training:
-  enabled: true                    # auto fine-tune on user-labeled objects
-  check_interval_hours: 6          # how often to check for new training data
-  min_samples_per_class: 30        # minimum labeled crops per class to trigger training
+  enabled: true
+  min_samples_per_class: 30
+  min_show_frames: 5               # groups with fewer frames hidden in UI
   epochs: 30
+  batch_size: 8
   imgsz: 1280
   base_model: yolo11m.pt
+
+ui:
+  page_size: 23
+  auto_refresh_seconds: 30
+  live_refresh_seconds: 5

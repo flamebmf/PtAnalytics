@@ -1,117 +1,99 @@
 # cam — Video Analytics System
 
-## Status: Deployed on Debian (bookworm), 3 cameras running, auto fine-tuning active
+## Status: Deployed on Debian (bookworm), 2 cameras (parking1, entrance), manual fine-tuning active
 
 ### Today (2026-05-30) — Session 3
-- [x] **Pipeline fps throttle** — `_frame_interval=1/fps` + `asyncio.sleep()` ensures processing respects camera `fps`
-- [x] **Tracker class voting** — `KalmanBoxTracker._class_votes` tracks class distribution; switches only when majority wins by ≥2 votes (fixes person↔car flips)
-- [x] **Model yolo11s.pt → yolo11m.pt**, confidence `0.55` → `0.6`, removed per-camera confidence overrides
-- [x] **Periodic fine-tuning** — `src/training/fine_tuner.py`: collects crops from user-named objects grouped by class, exports YOLO dataset, trains via `model.train()`, hot-swaps model
-- [x] **Training API**: `GET /training/status` (stats), `POST /training/run` (trigger manually)
-- [x] **Model persistence** — `YOLO_CONFIG_DIR` set to `/app/models/` (volume), never re-downloads after rebuild
-- [x] **UI: `/filters` endpoint** — lightweight camera/class/name lists (replaced `/objects?limit=500`)
-- [x] **UI: name autocomplete** — `<datalist>` on filter-name + detail-name inputs, suggests existing names
-- [x] **UI: SQL GROUP BY for grouped view** — `/objects?grouped=1` backend GROUP BY instead of JS iterating 5000 objects
-- [x] **`POST /config/reload`** — hot-reloads cameras.yaml, settings.yaml, triggers.yaml without restart
-- [x] **`pipeline.reconfigure()`** — updates detector (confidence, imgsz, classes), tracker params, motion, fps on the fly
+- [x] **Pipeline fps throttle** — `_frame_interval=1/fps` + `asyncio.sleep()`
+- [x] **Tracker class voting** — switches class only when majority wins by ≥2 votes
+- [x] **Model yolo11s.pt → yolo11m.pt**, confidence `0.55` → `0.6`
+- [x] **Per-frame reclassify** — dropdown on each frame to change class, moves frame to new object preserving name
+- [x] **Per-frame move to group** — input with autocomplete, moves frame to named group
+- [x] **Group class** — button in group detail to set class for all objects with same name
+- [x] **DB indexes** — 8 indexes added for query performance (last_seen, ignored, name, camera, class, frames, events)
+- [x] **get_or_create_object** — `ORDER BY last_seen DESC LIMIT 1` handles duplicates from reclassification
+- [x] **Manual fine-tuning** — `src/training/fine_tuner.py`: per-name training, stdout capture, clean epoch logging
+- [x] **Training by name** — `collect_dataset(name_filter=...)` merges all classes under dominant class
+- [x] **Training UI:** modal with per-name candidates, run/run-all buttons, live progress polling
+- [x] **Model persistence** — `fine-tuned.pt` auto-loaded on startup if present
+- [x] **All timestamps MSK (+3)** — `/live`, objects, frames
+- [x] **`POST /config/reload`** — hot-reloads cameras/settings/triggers, adds/removes pipelines
+- [x] **`pipeline.reconfigure()`** — updates detector/tracker/motion/fps on the fly
 - [x] **`pipeline.reload_detector()`** — hot-swaps YOLO model after fine-tuning
-- [x] **UI: `↻ Config` button** — one-click config reload with visual confirmation
+- [x] **UI redesign:** PlurumTech brand — dark theme #04070d, Roboto font, gradient Pt logo, neon buttons
+- [x] **Live preview** — 25vw image with class badge overlay + structured text info
+- [x] **Merged navbar:** logo + filters + buttons + health in one row
+- [x] **Removed gate1** from cameras.yaml
 
 ### Session 2 (2026-05-29)
-- [x] Fix: `delete_frame` updates parent `last_seen` to max remaining frame timestamp
-- [x] Fix: `renderGrouped` respects selected sort direction
-- [x] Fix: timezone error in `delete_frame` — `_db_timestamp()` strips tzinfo
-- [x] Script: `cleanup-small-frames.py` — deletes frames with small bbox
-- [x] Periodic cleanup task — every 5 min: deletes orphan frames + objects
+- [x] Fix: `delete_frame` updates parent `last_seen`
+- [x] Fix: `renderGrouped` respects sort direction
+- [x] Fix: timezone errors in `delete_frame`, `_db_timestamp()` strips tzinfo
+- [x] Script: `cleanup-small-frames.py`
+- [x] Periodic cleanup — every 5 min: orphan frames + objects + events
 - [x] Fix: `last_seen` uses frame timestamp via `get_or_create_object(timestamp=...)`
-- [x] Script: `backfill-last-seen.py` — recalculates `first_seen`/`last_seen` from frame timestamps
+- [x] Script: `backfill-last-seen.py`
 - [x] Fix: removed `onupdate=func.now()` from `last_seen` column
-- [x] Fix: `_unlocal` in backfill — UTC→MSK conversion mismatch
-- [x] Fix: cleanup FK violation — delete events before orphan objects
-- [x] Fix: disable heuristic plate fallback — Canny+contour found wheel disks as plates
+- [x] Fix: `_unlocal` in backfill
+- [x] Fix: cleanup FK violation
+- [x] Fix: disable heuristic plate fallback
 
 ### Session 1 (2026-05-29)
-- [x] Class-aware tracker matching — per-class IoU prevents cross-class merges
-- [x] Local model resolution — `_find_model` searches multiple paths before download
-- [x] OpenVINO model integrity — re-exports corrupt .bin
-- [x] OpenVINO backend support (torch/openvino)
-- [x] Debian bookworm migration (Containerfile.debian)
-- [x] Full frame save with bbox overlay
-- [x] Person-in-car filter — removes persons >50% inside vehicle bbox
-- [x] Vehicle ReID — 512-dim HSV+shape embedding, pgvector cosine search
-- [x] Dataset collection — 3 crops/track (entry/mid/exit) with dedup
-- [x] `export-dataset.py` — train/val split + dataset.yaml
+- [x] Class-aware tracker matching, local model resolution, OpenVINO support
+- [x] Debian bookworm, full frame save, person-in-car filter
+- [x] Vehicle ReID, dataset collection, export-dataset.py
 
 ## Config
 ```yaml
 detector:
-  model: yolo11m.pt          # was yolo11s.pt
-  confidence: 0.6            # was 0.55
-  imgsz: 1280
-  workers: 4
-  backend: torch
-  classes: [0,1,2,3,5,7]     # person, bicycle, car, motorcycle, bus, truck
+  model: yolo11m.pt
+  confidence: 0.6
+  imgsz: 1280, workers: 4, backend: torch
+  classes: [person, bicycle, car, motorcycle, bus, truck]
   min_bbox_size: 40
 tracker:
-  depart_timeout: 10.0
+  depart_timeout: 10.0, max_age: 30
 motion:
   skip_seconds: 0.0
 training:
-  enabled: true
-  check_interval_hours: 6
-  min_samples_per_class: 30
-  epochs: 30
-  imgsz: 1280
-  base_model: yolo11m.pt
+  min_samples_per_class: 30, epochs: 30, imgsz: 1280
+cameras:
+  parking1: { confidence: 0.6, imgsz: 1280, fps: 10 }
+  entrance: { confidence: 0.6, imgsz: 1280, fps: 10 }
 ```
 
 ## API
 | Endpoint | Description |
 |----------|-------------|
-| `GET /health` | Status + DB check |
-| `GET /stats`, `/stats/detailed` | Per-camera metrics |
-| `GET /filters` | Cameras, classes, names for UI dropdowns |
-| `GET /objects` | List — filter by camera_id, class_name, name, sort; `?grouped=1` for GROUP BY |
-| `GET /objects/names` | Distinct names with count + cameras |
-| `GET /objects/{id}` | Detail + frames |
-| `PATCH /objects/{id}` | Rename object |
+| `GET /health`, `/stats`, `/stats/detailed` | Health + per-camera metrics |
+| `GET /filters` | Cameras, classes, names |
+| `GET /live` | Latest frame with object info |
+| `GET /objects` | List with filters; `?grouped=1` for SQL GROUP BY |
+| `GET /objects/names` | Distinct names |
+| `GET /objects/{id}` | Detail + frames (with class_name per frame) |
+| `PATCH /objects/{id}` | Rename |
 | `DELETE /objects/{id}` | Cascade delete |
 | `POST /objects/{id}/ignore` | Toggle ignore |
-| `DELETE /frames/{id}` | Delete single frame, recalc parent last_seen |
+| `POST /objects/reclassify-group` | Set class for all objects with same name |
+| `DELETE /frames/{id}` | Delete frame, recalc parent |
+| `POST /frames/{id}/reclassify` | Change class or move to group |
 | `GET /frames/{filename}` | Serve JPG |
-| `POST /config/reload` | Hot-reload cameras.yaml, settings.yaml, triggers.yaml |
-| `GET /training/status` | Labeled samples count, last train time |
-| `POST /training/run` | Trigger fine-tuning manually |
-
-## Scripts
-| Script | Purpose |
-|--------|---------|
-| `scripts/deploy.sh` | Podman pod deploy (PG + MQTT optional) |
-| `scripts/build-push.sh` | Build image + push to registry |
-| `scripts/test-stream.sh` | RTSP/ONVIF camera verification |
-| `scripts/health-check.sh` | Pod/container/DB health check |
-| `scripts/backfill-reid.py` | Compute embeddings for existing vehicles |
-| `scripts/backfill-last-seen.py` | Recalculate first_seen/last_seen from frame timestamps |
-| `scripts/cleanup-small-frames.py` | Remove frames with small bbox |
-| `scripts/export-dataset.py` | Split crops → train/val for fine-tuning |
+| `POST /config/reload` | Hot-reload configs |
+| `GET /training/candidates` | Per-name candidates with frame counts |
+| `GET /training/status` | Running jobs state |
+| `POST /training/run?name=X` | Trigger fine-tuning |
 
 ## Architecture
 ```
-RTSP → StreamReader → MotionDetector → YoloDetector → DeepSortTracker → LPR/Face/ReID → Storage(PG+pgvector) → Actions(webhook/MQTT/log)
+RTSP → StreamReader → MotionDetector → YoloDetector → DeepSortTracker → LPR/Face/ReID → Storage(PG+pgvector) → Actions
                                                                               ↓
-                                                                       FineTuner (auto train on named objects)
+                                                                       FineTuner (manual, per-name)
 ```
 
 ## Known Issues
-- OpenVINO on small models: 1.4 FPS / 98% CPU (worse than torch)
 - **LPR**: YOLO plate model не загружается
-- **entrance**: 0 детекций с confidence 0.6 (было) — должно улучшиться с yolo11m + 0.6
 - **parking1**: мало объектов (стоящие машины не проходят motion filter)
 
 ## Next Steps
 - [ ] **Fix LPR** — YOLO plate model download + PaddleOCR integration
-- [ ] **Multi-frame confirmation** — assign name only after match persists for N frames
 - [ ] **PresenceTracker** — arriving/home/leaving по именам объектов
-- [ ] **Manual merge** (`POST /objects/merge`) — link two objects under same name
 - [ ] **Tune ReID threshold** based on backfill scores
-- [ ] **Run dataset collection for 3-7 days**, then verify fine-tuning quality

@@ -1,133 +1,306 @@
 <!DOCTYPE html>
-<html lang="ru" data-bs-theme="dark">
+<html lang="ru">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CAM — Video Analytics</title>
+<title>PlurumTech CAM — Video Analytics</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
-body { font-size: .75rem; }
-.table { font-size: .7rem; margin-bottom: 0; }
-.table th { white-space: nowrap; user-select: none; cursor: pointer; padding: 2px 6px; font-size: .65rem; }
-.table th:hover { background: var(--bs-gray-800); }
-.table td { vertical-align: middle; padding: 1px 6px; }
-.table tr { line-height: 1.1; }
-.thumb { width: 120px; height: 80px; object-fit: cover; border-radius: 4px; cursor: pointer; transition: .2s; }
-.thumb:hover { transform: scale(1.05); box-shadow: 0 0 12px rgba(0,0,0,.5); }
-#detail { display: none; }
-.pagination { margin-bottom: 0; }
-.filter-row { background: var(--bs-gray-900); border-radius: 6px; padding: 6px 10px; }
-.table-scroll { max-height: calc(100vh - 310px); overflow-y: auto; }
-.detail-scroll { max-height: calc(100vh - 200px); overflow-y: auto; }
-.frame-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
-.frame-card { background: var(--bs-gray-800); border-radius: 6px; padding: 6px; }
-.frame-card img { width: 100%; height: 100px; object-fit: cover; border-radius: 4px; }
+:root {
+  --bg: #04070d;
+  --accent: #00d4ff;
+  --accent2: #7b61ff;
+  --text: #e4e8ee;
+  --muted: #7a8294;
+  --card-bg: rgba(10,15,22,.9);
+  --card-border: rgba(255,255,255,.06);
+}
+* { box-sizing: border-box; }
+body {
+  font-family: 'Roboto', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  font-size: .85rem;
+  overflow-x: hidden;
+}
+/* Navbar */
+.navbar-cam {
+  background: rgba(4,7,13,.85);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255,255,255,.05);
+  padding: 6px 0;
+  position: sticky; top: 0; z-index: 1000;
+}
+.navbar-brand-cam {
+  font-weight: 900; font-size: 1.3rem; color: var(--text) !important;
+  display: flex; align-items: center; gap: 8px; text-decoration: none;
+}
+.navbar-brand-cam span.grad {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.logo-svg {
+  width: 48px; height: auto;
+  filter: drop-shadow(0 0 12px rgba(0,212,255,.4));
+}
+/* Buttons */
+.btn-neon {
+  background: transparent; border: 1px solid var(--accent); color: var(--accent);
+  padding: 4px 12px; font-size: .75rem; font-weight: 700; border-radius: 6px;
+  letter-spacing: .5px; text-decoration: none; transition: all .3s; cursor: pointer;
+}
+.btn-neon:hover { background: rgba(0,212,255,.1); box-shadow: 0 0 16px rgba(0,212,255,.3); color: #fff; }
+.btn-neon-fill {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border: none; color: var(--bg); padding: 4px 12px; font-size: .75rem; font-weight: 700;
+  border-radius: 6px; letter-spacing: .5px; cursor: pointer; transition: all .3s;
+}
+.btn-neon-fill:hover { box-shadow: 0 0 20px rgba(0,212,255,.4); }
+.btn-muted {
+  background: transparent; border: 1px solid var(--muted); color: var(--muted);
+  padding: 4px 12px; font-size: .75rem; border-radius: 6px; cursor: pointer; transition: all .3s;
+}
+.btn-muted:hover { color: var(--text); border-color: var(--text); }
+.btn-xs { padding: 2px 8px; font-size: .7rem; border-radius: 4px; }
+.form-select-sm, .form-control-sm {
+  background: rgba(4,7,13,.8); border: 1px solid rgba(255,255,255,.08);
+  color: var(--text); font-size: .75rem; padding: 3px 8px; border-radius: 5px;
+}
+.form-select-sm option { background: rgba(10,15,22,.98); color: var(--text); }
+.form-select-sm:focus, .form-control-sm:focus {
+  border-color: var(--accent); box-shadow: 0 0 8px rgba(0,212,255,.15);
+  background: rgba(4,7,13,.9); color: var(--text);
+}
+.form-check-input { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.15); }
+.form-check-input:checked { background-color: var(--accent); border-color: var(--accent); }
+.form-check-label { font-size: .75rem; color: var(--muted); }
+/* Datalist suggestions */
+input[list]::-webkit-calendar-picker-indicator { filter: invert(.5); }
+input[list]:focus { border-color: var(--accent); }
+/* Live preview */
+.live-preview {
+  background: var(--card-bg); border: 1px solid var(--card-border);
+  border-radius: 10px; padding: 12px 16px; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 20px;
+}
+.live-preview img {
+  width: 100%; height: auto; object-fit: contain;
+  border-radius: 6px; border: 1px solid rgba(0,212,255,.2);
+  background: #000;
+}
+.live-preview .info { font-size: .9rem; line-height: 1.5; flex: 1; }
+.live-preview .info .name { font-size: 1.1rem; }
+/* Table */
+.table-cam {
+  background: var(--card-bg); border: 1px solid var(--card-border);
+  border-radius: 10px; overflow: hidden;
+}
+.table-cam table { margin-bottom: 0; background: transparent; }
+.table-cam thead th {
+  background: rgba(4,7,13,.8); color: var(--muted);
+  font-size: .7rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+  padding: 5px 10px; border-bottom: 1px solid rgba(255,255,255,.06);
+  white-space: nowrap; cursor: pointer; user-select: none;
+}
+.table-cam thead th:hover { color: var(--accent); }
+.table-cam tbody td {
+  padding: 4px 10px; font-size: .82rem; border-bottom: 1px solid rgba(255,255,255,.03);
+  vertical-align: middle; line-height: 1.3; color: var(--text);
+  background: transparent;
+}
+.table-cam tbody tr { transition: background .2s; }
+.table-cam tbody tr:hover { background: rgba(0,212,255,.04); }
+.table-active { background: rgba(0,212,255,.05) !important; }
+.table-active:hover { background: rgba(0,212,255,.08) !important; }
+.text-grad {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.badge-class { background: rgba(0,212,255,.15); color: var(--accent); font-size: .6rem; font-weight: 600; padding: 1px 5px; border-radius: 3px; }
+.badge-count { background: rgba(123,97,255,.15); color: var(--accent2); font-size: .6rem; font-weight: 600; padding: 1px 5px; border-radius: 3px; }
+.badge-ok { background: rgba(40,167,69,.15); color: #28a745; font-size: .6rem; padding: 1px 5px; border-radius: 3px; }
+.badge-no { background: rgba(255,255,255,.06); color: var(--muted); font-size: .6rem; padding: 1px 5px; border-radius: 3px; }
+.badge-warn { background: rgba(255,193,7,.15); color: #ffc107; font-size: .6rem; padding: 1px 5px; border-radius: 3px; }
+/* Detail panel */
+.detail-panel {
+  background: var(--card-bg); border: 1px solid var(--card-border);
+  border-radius: 10px; padding: 12px; display: none;
+}
+.detail-scroll { max-height: calc(100vh - 190px); overflow-y: auto; }
+/* BG bars */
+.bg-bars { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.bg-bar {
+  position: absolute; border-radius: 999px; will-change: transform, opacity; opacity: 1; transition: opacity 3s ease;
+  background: linear-gradient(180deg, transparent 0%, transparent 10%, rgba(0,212,255,.06) 25%, rgba(0,212,255,.25) 50%, rgba(0,212,255,.06) 75%, transparent 90%, transparent 100%);
+  box-shadow: 0 0 12px rgba(0,212,255,.12);
+}
+.bg-bar.dim { opacity: 0.12; }
+.bg-bar.purple {
+  background: linear-gradient(180deg, transparent 0%, transparent 10%, rgba(123,97,255,.05) 25%, rgba(123,97,255,.2) 50%, rgba(123,97,255,.05) 75%, transparent 90%, transparent 100%);
+  box-shadow: 0 0 10px rgba(123,97,255,.1);
+}
+.frame-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.frame-card {
+  background: rgba(4,7,13,.6); border: 1px solid var(--card-border);
+  border-radius: 8px; padding: 8px; transition: all .3s;
+}
+.frame-card:hover { border-color: rgba(0,212,255,.2); box-shadow: 0 4px 16px rgba(0,0,0,.4); }
+.frame-card img { width: 100%; height: 150px; object-fit: cover; border-radius: 4px; cursor: pointer; }
+.pagination { margin: 0; }
+.page-link { background: rgba(4,7,13,.8); border: 1px solid rgba(255,255,255,.06); color: var(--muted); font-size: .75rem; padding: 3px 10px; }
+.page-link:hover { background: rgba(0,212,255,.1); color: var(--accent); }
+.page-item.active .page-link { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.page-item.disabled .page-link { background: transparent; color: rgba(255,255,255,.1); }
+/* Modal dark */
+.modal-content { background: var(--card-bg); border: 1px solid var(--card-border); }
+.modal-header { border-bottom: 1px solid rgba(255,255,255,.06); }
+.modal-body table { font-size: .7rem; }
+/* Misc */
 .loading { opacity: .5; pointer-events: none; }
-.live-preview { background: var(--bs-gray-900); border-radius: 6px; padding: 6px 10px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
-.live-preview img { height: 80px; width: 120px; object-fit: cover; border-radius: 4px; border: 1px solid var(--bs-gray-700); }
-.live-preview .info { font-size: .7rem; line-height: 1.3; }
+input::placeholder, select option { color: var(--muted) !important; }
+/* Autocomplete */
+.autocomplete-wrap { position: relative; display: inline-block; }
+.autocomplete-drop {
+  display: none; position: fixed; z-index: 1060;
+  background: rgba(10,15,22,.98); border: 1px solid var(--accent);
+  border-radius: 6px; max-height: 180px; overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0,0,0,.6);
+}
+.autocomplete-drop.show { display: block; }
+.autocomplete-drop div {
+  padding: 4px 10px; font-size: .75rem; color: var(--text);
+  cursor: pointer; border-bottom: 1px solid rgba(255,255,255,.04);
+}
+.autocomplete-drop div:hover, .autocomplete-drop div.active { background: rgba(0,212,255,.12); color: var(--accent); }
+
+/* Mobile */
+@media (max-width: 768px) {
+  #nav-collapse.show { display: flex !important; flex-direction: column; width: 100%; gap: 4px; padding-top: 6px; }
+  .live-preview { flex-direction: column; }
+  .live-preview img { width: 100% !important; }
+  .live-preview > div:first-child { width: 100% !important; }
+  .table-cam thead th { font-size: .6rem; padding: 3px 5px; }
+  .table-cam tbody td { font-size: .7rem; padding: 2px 5px; }
+  .frame-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .frame-card img { height: auto; max-height: 120px; object-fit: contain; background: #000; }
+  .detail-scroll { max-height: none; }
+}
 </style>
 </head>
 <body>
 
-<div class="container-fluid py-3">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-    <h4 class="mb-0">CAM — Video Analytics</h4>
-    <div>
-      <span class="badge fs-6 me-2" id="badge-health">—</span>
-      <button class="btn btn-sm btn-outline-warning me-1" onclick="reloadConfig()" title="Перечитать конфигурацию">↻ Config</button>
-      <button class="btn btn-sm btn-outline-info me-1" onclick="openTraining()">Дообучение</button>
-      <button class="btn btn-sm btn-outline-secondary me-1" id="btn-pause" onclick="togglePause()" title="Пауза автообновления">⏸</button>
-      <a href="/" class="btn btn-sm btn-outline-secondary" onclick="event.preventDefault();location.reload()">Обновить</a>
-    </div>
-  </div>
+<div class="bg-bars" id="bg-bars"></div>
 
-  <!-- Filters -->
-  <div class="filter-row row g-1 align-items-center mb-2">
-    <div class="col-auto">
-      <select class="form-select form-select-sm" id="filter-camera" style="width:100px"><option value="">все камеры</option></select>
-    </div>
-    <div class="col-auto">
-      <select class="form-select form-select-sm" id="filter-class" style="width:90px"><option value="">все классы</option></select>
-    </div>
-    <div class="col-auto">
-      <input class="form-control form-control-sm" id="filter-name" list="name-suggestions" placeholder="имя..." style="width:110px">
-    </div>
-    <div class="col-auto">
-      <select class="form-select form-select-sm" id="filter-sort" style="width:130px" onchange="loadObjects(0)">
-        <option value="-last_seen">сначала новые</option>
-        <option value="+last_seen">сначала старые</option>
-        <option value="+first_seen">по появлению</option>
-        <option value="-first_seen">новые объекты</option>
-      </select>
-    </div>
-    <div class="col-auto d-flex align-items-center gap-2">
-      <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" id="group-by-name" onchange="loadObjects(0)"><label class="form-check-label small">групп.</label></div>
-      <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" id="show-ignored" onchange="loadObjects(0)"><label class="form-check-label small">ignor.</label></div>
-    </div>
-    <div class="col-auto">
-      <button class="btn btn-sm btn-primary py-0" onclick="loadObjects(0)">Поиск</button>
-      <button class="btn btn-sm btn-outline-secondary py-0" onclick="resetFilters()">Сброс</button>
-    </div>
-    <div class="col-auto ms-auto text-end text-muted small" id="obj-count">—</div>
-  </div>
+<div class="navbar-cam" style="position:relative;z-index:1">
+  <div class="container-fluid">
+    <div class="d-flex align-items-center flex-wrap">
+      <a class="navbar-brand-cam me-auto" href="/" style="gap:10px">
+        <svg class="logo-svg" viewBox="0 0 155 205" xmlns="http://www.w3.org/2000/svg">
+          <rect x="7" y="7" width="141" height="191" rx="15" ry="15" fill="none" stroke="url(#gh)" stroke-width="4"/>
+          <text x="50%" y="50%" text-anchor="middle" fill="url(#gh)" font-size="140" font-weight="900" dy=".3em">P</text>
+          <text x="65%" y="70%" text-anchor="middle" fill="#7b61ff" font-size="75" font-weight="bold" dy=".3em">t</text>
+          <defs><linearGradient id="gh" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#00d4ff"/><stop offset="100%" stop-color="#7b61ff"/></linearGradient></defs>
+        </svg>
+        <span style="font-size:1.15rem">Pt<span class="grad"> Analytics</span></span>
+      </a>
 
-  <!-- Live preview -->
-  <div class="live-preview d-none" id="live-preview">
-    <img id="live-img" src="" alt="">
-    <div class="info flex-grow-1">
-      <div><span class="badge bg-info" id="live-class">—</span> <span class="text-info fw-semibold" id="live-name">—</span> <code class="small" id="live-cam">—</code></div>
-      <div class="text-muted"><span id="live-conf">—</span> · <span id="live-ts">—</span></div>
+      <button class="btn-muted d-md-none me-2" type="button" onclick="document.getElementById('nav-collapse').classList.toggle('show')" style="font-size:1rem;padding:2px 8px">☰</button>
+
+      <div class="d-none d-md-flex align-items-center gap-2 flex-wrap flex-grow-1" id="nav-collapse">
+        <select class="form-select form-select-sm" id="filter-camera" style="width:90px"><option value="">все камеры</option></select>
+        <select class="form-select form-select-sm" id="filter-class" style="width:80px"><option value="">все классы</option></select>
+        <div class="autocomplete-wrap"><input class="form-control form-control-sm" id="filter-name" data-autocomplete placeholder="имя..." style="width:100px"></div>
+        <select class="form-select form-select-sm" id="filter-sort" style="width:120px" onchange="loadObjects(0)">
+          <option value="-last_seen">сначала новые</option>
+          <option value="+last_seen">сначала старые</option>
+          <option value="+first_seen">по появлению</option>
+          <option value="-first_seen">новые объекты</option>
+        </select>
+        <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" id="group-by-name" onchange="loadObjects(0)"><label class="form-check-label">групп.</label></div>
+        <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" id="show-ignored" onchange="loadObjects(0)"><label class="form-check-label">ignor.</label></div>
+        <button class="btn-neon-fill py-0" onclick="loadObjects(0)">Поиск</button>
+        <button class="btn-muted py-0" onclick="resetFilters()">Сброс</button>
+
+        <span style="color:var(--muted);font-size:.75rem" id="obj-count">—</span>
+
+        <button class="btn-neon py-0" onclick="reloadConfig()" title="Перечитать конфигурацию">↻ Config</button>
+        <button class="btn-neon-fill py-0" onclick="openTraining()">Дообучение</button>
+        <button class="btn-muted py-0" id="btn-pause" onclick="togglePause()" title="Пауза автообновления">⏸</button>
+        <button class="btn-muted py-0" onclick="location.reload()">Обновить</button>
+        <span id="badge-health" style="font-size:.7rem;font-weight:700;letter-spacing:.5px;padding:2px 10px;border-radius:4px;background:var(--muted);color:#04070d">—</span>
+      </div>
     </div>
   </div>
+</div>
+
+<div class="container-fluid py-2" style="position:relative;z-index:1">
 
   <div class="row">
-    <!-- Table (left) -->
-    <div class="col-md-7">
-      <div class="table-responsive table-scroll">
-        <table class="table table-sm table-hover align-middle mb-0" id="obj-table">
-          <thead class="table-dark">
-            <tr>
-              <th>Имя</th>
-              <th>Класс</th>
-              <th>Камера</th>
-              <th>Замечен</th>
-            </tr>
-          </thead>
-          <tbody id="obj-tbody"></tbody>
-        </table>
+    <!-- Table + Preview (left) -->
+    <div class="col-md-6">
+      <!-- Live preview -->
+      <div class="live-preview d-none" id="live-preview">
+        <div style="position:relative;flex-shrink:0;width:50%">
+          <img id="live-img" src="" alt="">
+          <span class="badge-class" id="live-class" style="position:absolute;top:6px;left:6px;font-size:.75rem;padding:2px 8px">—</span>
+        </div>
+        <div class="info flex-grow-1">
+          <div style="font-size:1rem;font-weight:600">Название — <span class="text-grad fw-bold" style="font-size:1.1rem" id="live-name">—</span></div>
+          <div style="color:var(--muted);font-size:.8rem">Камера — <code id="live-cam">—</code></div>
+          <div style="color:var(--muted);font-size:.8rem">Дата и время — <span id="live-ts">—</span></div>
+          <div style="color:var(--muted);font-size:.8rem">Точность — <span id="live-conf">—</span></div>
+        </div>
       </div>
-      <div class="d-flex justify-content-between align-items-center mt-2">
+      <div class="table-cam" id="table-wrapper" style="max-height:calc(100vh - 420px);overflow-y:auto">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0" id="obj-table">
+            <thead>
+              <tr>
+                <th>Имя</th>
+                <th>Класс</th>
+                <th>Камера</th>
+                <th>Замечен</th>
+              </tr>
+            </thead>
+            <tbody id="obj-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="d-flex justify-content-between align-items-center mt-1">
         <nav><ul class="pagination pagination-sm mb-0" id="obj-pagi"></ul></nav>
-        <span class="text-muted small" id="obj-range"></span>
+        <span style="color:var(--muted);font-size:.75rem" id="obj-range"></span>
       </div>
     </div>
 
     <!-- Detail (right) -->
-    <div class="col-md-5">
-      <div id="detail" class="detail-scroll">
+    <div class="col-md-6">
+      <div id="detail" class="detail-panel detail-scroll">
         <div class="d-flex justify-content-between align-items-start mb-2">
-          <h5 class="mb-0" id="detail-title">—</h5>
-          <div class="d-flex gap-2">
-            <button class="btn btn-sm btn-outline-warning" id="btn-ignore" onclick="ignoreObject()">Игнор</button>
-            <button class="btn btn-sm btn-outline-danger" onclick="deleteObject()">Удалить</button>
-            <button class="btn btn-sm btn-outline-secondary" onclick="closeDetail()">Закрыть</button>
+          <h6 class="mb-0" id="detail-title" style="font-weight:700;font-size:.8rem">—</h6>
+          <div class="d-flex gap-1">
+            <button class="btn btn-xs btn-outline-warning" id="btn-ignore" onclick="ignoreObject()">Игнор</button>
+            <button class="btn btn-xs btn-outline-danger" onclick="deleteObject()">Удалить</button>
+            <button class="btn-muted btn-xs" onclick="closeDetail()">Закрыть</button>
           </div>
         </div>
-        <div class="input-group input-group-sm mb-2">
-          <input class="form-control form-control-sm" id="detail-name" list="name-suggestions" placeholder="дать название..." maxlength="128">
-          <button class="btn btn-outline-success btn-sm" onclick="saveName()">OK</button>
+        <div class="input-group input-group-sm mb-2" style="max-width:320px">
+          <input class="form-control form-control-sm" id="detail-name" data-autocomplete placeholder="название..." maxlength="128" style="font-size:.75rem">
+          <button class="btn-neon-fill btn-xs" onclick="saveName()" style="font-size:.6rem">OK</button>
         </div>
-        <div class="input-group input-group-sm mb-2 d-none" id="group-class-row">
-          <span class="input-group-text">класс группы</span>
-          <select class="form-select form-select-sm" id="group-class-select">
+        <div class="input-group input-group-sm mb-2 d-none" id="obj-class-row" style="max-width:320px">
+          <span class="input-group-text" id="obj-class-label" style="font-size:.6rem;background:rgba(4,7,13,.8);border-color:rgba(255,255,255,.08);color:var(--muted)">класс</span>
+          <select class="form-select form-select-sm" id="obj-class-select">
             <option>person</option><option>bicycle</option><option>car</option><option>motorcycle</option><option>bus</option><option>truck</option>
           </select>
-          <button class="btn btn-outline-primary btn-sm" onclick="setGroupClass()">Применить</button>
+          <button class="btn-neon btn-xs" onclick="setObjClass()">Применить</button>
         </div>
-        <div class="text-muted small mb-2" id="detail-meta">—</div>
+        <div style="color:var(--muted);font-size:.75rem" class="mb-2" id="detail-meta">—</div>
         <div class="frame-grid" id="frame-grid"></div>
-        <div class="text-center text-muted py-4" id="frame-empty">Нет изображений</div>
+        <div class="text-center py-4" style="color:var(--muted);font-size:.7rem" id="frame-empty">Нет изображений</div>
       </div>
     </div>
   </div>
@@ -167,27 +340,24 @@ body { font-size: .75rem; }
         <h6 class="mb-0">Дообучение модели</h6>
         <button class="btn-close" data-bs-dismiss="modal"></button>
       </div>
-      <div class="modal-body small">
+      <div class="modal-body" style="font-size:.7rem">
         <div class="d-flex justify-content-between align-items-center mb-3">
-          <span class="text-muted">Минимум кадров на класс: <strong id="train-min">—</strong></span>
-          <button class="btn btn-sm btn-primary" id="btn-train-all" onclick="startTraining()">Запустить все</button>
+          <span style="color:var(--muted)">Минимум кадров на класс: <strong id="train-min">—</strong></span>
+          <button class="btn-neon-fill btn-xs" id="btn-train-all" onclick="startTraining()">Запустить все</button>
         </div>
-        <div id="train-running" class="d-none mb-3 p-2 rounded" style="background:var(--bs-gray-800)"></div>
-        <table class="table table-sm table-dark mb-0" id="train-table">
-          <thead><tr><th>Имя</th><th>Класс</th><th>Объектов</th><th>Кадров</th><th>Готов</th><th></th></tr></thead>
-          <tbody id="train-tbody"><tr><td colspan="6" class="text-center text-muted py-3">загрузка…</td></tr></tbody>
+        <div id="train-running" class="d-none mb-3 p-2 rounded" style="background:rgba(4,7,13,.6)"></div>
+        <table class="table table-sm table-dark mb-0" style="font-size:.7rem" id="train-table">
+          <thead><tr><th>Имя</th><th>Класс</th><th>Объектов</th><th>Кадров</th><th>Готов</th><th></th><th></th></tr></thead>
+          <tbody id="train-tbody"><tr><td colspan="7" class="text-center" style="color:var(--muted)">загрузка…</td></tr></tbody>
         </table>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Autocomplete suggestions -->
-<datalist id="name-suggestions"></datalist>
-
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 23;
 let currentOffset = 0;
 let currentTotal = 0;
 let currentObjId = null;
@@ -195,6 +365,9 @@ let currentGroupName = null;
 let delModal;
 let loading = false;
 let allNames = [];
+let trainModal, trainPoll;
+let autoPaused = false;
+let refreshIntervals = [];
 
 // ---- Health ----
 async function loadHealth() {
@@ -202,9 +375,11 @@ async function loadHealth() {
     const r = await fetch('/health');
     const d = await r.json();
     const el = document.getElementById('badge-health');
-    el.textContent = d.status === 'healthy' ? '✓ ' + d.status : '⚠ ' + (d.status || '—');
-    el.className = 'badge fs-6 me-2 bg-' + (d.status === 'healthy' ? 'success' : d.status === 'degraded' ? 'warning' : 'danger');
-  } catch { document.getElementById('badge-health').textContent = '✗ недоступен'; }
+    el.textContent = d.status;
+    el.style.fontSize = '.7rem';
+    const clr = d.status === 'healthy' ? 'var(--accent)' : d.status === 'degraded' ? '#ffc107' : '#dc3545';
+    el.style.cssText = `font-size:.7rem;color:#04070d;background:${clr};padding:2px 10px;border-radius:4px;font-weight:700;letter-spacing:.5px;text-transform:uppercase`;
+  } catch { const el = document.getElementById('badge-health'); el.textContent = 'offline'; el.style.cssText = 'font-size:.7rem;color:#fff;background:#dc3545;padding:2px 10px;border-radius:4px;font-weight:700;letter-spacing:.5px;text-transform:uppercase'; }
 }
 
 // ---- Filters ----
@@ -249,11 +424,10 @@ async function loadFilterOptions() {
     for (const c of (d.cameras || []).sort()) camSel.innerHTML += `<option value="${c}">${c}</option>`;
     const clsSel = document.getElementById('filter-class');
     for (const c of (d.classes || []).sort()) clsSel.innerHTML += `<option value="${c}">${c}</option>`;
-    const datalist = document.getElementById('name-suggestions');
-    datalist.innerHTML = (d.names || []).map(n => `<option value="${escapeHtml(n)}">`).join('');
     allNames = (d.names || []).sort();
     restoreFilters();
     loadObjects(0);
+    setTimeout(refreshAutocomplete, 200);
   } catch { restoreFilters(); loadObjects(0); }
 }
 
@@ -263,7 +437,7 @@ async function loadObjects(offset) {
   loading = true;
   currentOffset = offset;
   const groupByName = document.getElementById('group-by-name').checked;
-  const params = new URLSearchParams({ limit: PAGE_SIZE, offset: groupByName ? 0 : offset });
+  const params = new URLSearchParams({ limit: window._PAGE_SIZE || PAGE_SIZE, offset: groupByName ? 0 : offset });
   saveFilters();
   const camera = document.getElementById('filter-camera').value;
   if (camera) params.set('camera_id', camera);
@@ -271,14 +445,13 @@ async function loadObjects(offset) {
   if (cls) params.set('class_name', cls);
   const name = document.getElementById('filter-name').value.trim();
   if (name) params.set('name', name);
-
   const sort = document.getElementById('filter-sort').value;
   if (sort !== '-last_seen') params.set('sort', sort);
   if (document.getElementById('show-ignored').checked) params.set('show_ignored', '1');
   if (groupByName) params.set('grouped', '1');
 
   const tbody = document.getElementById('obj-tbody');
-  tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">загрузка…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="4" class="text-center" style="color:var(--muted)">загрузка…</td></tr>';
   document.getElementById('obj-table').classList.add('loading');
 
   try {
@@ -294,9 +467,11 @@ async function loadObjects(offset) {
       currentTotal = d.total;
       document.getElementById('obj-count').textContent = 'всего: ' + d.total;
       if (!d.items.length) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">нет объектов</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center" style="color:var(--muted)">нет объектов</td></tr>';
         document.getElementById('obj-range').textContent = '';
         document.getElementById('obj-pagi').innerHTML = '';
+        document.getElementById('obj-table').classList.remove('loading');
+        loading = false;
         return;
       }
       renderFlat(tbody, d.items, offset);
@@ -305,7 +480,7 @@ async function loadObjects(offset) {
       renderPagination();
     }
   } catch {
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">ошибка загрузки</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center" style="color:#dc3545">ошибка загрузки</td></tr>';
   } finally {
     document.getElementById('obj-table').classList.remove('loading');
     loading = false;
@@ -315,13 +490,13 @@ async function loadObjects(offset) {
 function renderFlat(tbody, items, offset) {
   tbody.innerHTML = items.map(o => {
     const last = o.last_seen ? o.last_seen.replace('T', ' ').slice(0, 19) : '—';
-    const name = o.name ? '<span class="text-info fw-semibold">' + escapeHtml(o.name) + '</span>' : '<span class="text-muted">—</span>';
-    const ign = o.ignored ? '<span class="badge bg-warning text-dark ms-1">ignored</span>' : '';
+    const name = o.name ? `<span style="color:var(--accent);font-weight:600">${escapeHtml(o.name)}</span>` : `<span style="color:var(--muted)">—</span>`;
+    const ign = o.ignored ? '<span class="badge-warn ms-1">ignored</span>' : '';
     return `<tr onclick="loadDetail('${o.id}')" role="button" style="cursor:pointer"${o.ignored ? ' class="opacity-50"' : ''}>
-      <td class="text-nowrap"><small>${name}${ign}</small></td>
-      <td><span class="badge bg-info">${o.class_name}</span></td>
-      <td><code>${o.camera_id}</code></td>
-      <td class="text-nowrap"><small>${last}</small></td>
+      <td class="text-nowrap">${name}${ign}</td>
+      <td><span class="badge-class">${o.class_name}</span></td>
+      <td><code style="font-size:.65rem;color:var(--muted)">${o.camera_id}</code></td>
+      <td class="text-nowrap" style="font-size:.65rem;color:var(--muted)">${last}</td>
     </tr>`;
   }).join('');
 }
@@ -329,14 +504,10 @@ function renderFlat(tbody, items, offset) {
 function renderGrouped(tbody, groups, items) {
   let rows = [];
   for (const g of groups) {
-    rows.push({
-      type: 'group', last: g.last_seen, name: g.name, count: g.count,
-      cameras: (g.camera_ids || []).join(', '), classes: (g.class_names || []).join(', '),
-      ids: (g.obj_ids || []).join(','),
-    });
+    rows.push({ type:'group', last:g.last_seen, name:g.name, count:g.count, cameras:(g.camera_ids||[]).join(', '), classes:(g.class_names||[]).join(', '), ids:(g.obj_ids||[]).join(',') });
   }
   for (const o of (items || [])) {
-    rows.push({ type: 'item', last: o.last_seen, id: o.id, class_name: o.class_name, camera_id: o.camera_id });
+    rows.push({ type:'item', last:o.last_seen, id:o.id, class_name:o.class_name, camera_id:o.camera_id });
   }
   rows.sort((a, b) => (b.last || '').localeCompare(a.last || ''));
   let html = '';
@@ -344,32 +515,35 @@ function renderGrouped(tbody, groups, items) {
     const last = r.last ? r.last.replace('T', ' ').slice(0, 19) : '—';
     if (r.type === 'group') {
       html += `<tr onclick="loadGroupDetail('${escapeHtml(r.name)}', '${r.ids}')" role="button" style="cursor:pointer" class="table-active">
-        <td class="text-nowrap"><span class="text-info fw-bold">${escapeHtml(r.name)}</span> <span class="badge bg-secondary">${r.count}</span></td>
-        <td><span class="badge bg-info">${r.classes}</span></td>
-        <td><code>${r.cameras}</code></td>
-        <td class="text-nowrap"><small>${last}</small></td>
+        <td class="text-nowrap"><span style="color:var(--accent);font-weight:700">${escapeHtml(r.name)}</span> <span class="badge-count">${r.count}</span></td>
+        <td><span class="badge-class">${r.classes}</span></td>
+        <td><code style="font-size:.65rem;color:var(--muted)">${r.cameras}</code></td>
+        <td class="text-nowrap" style="font-size:.65rem;color:var(--muted)">${last}</td>
       </tr>`;
     } else {
       html += `<tr onclick="loadDetail('${r.id}')" role="button" style="cursor:pointer">
-        <td class="text-nowrap"><span class="text-muted">—</span></td>
-        <td><span class="badge bg-info">${r.class_name}</span></td>
-        <td><code>${r.camera_id}</code></td>
-        <td class="text-nowrap"><small>${last}</small></td>
+        <td class="text-nowrap"><span style="color:var(--muted)">—</span></td>
+        <td><span class="badge-class">${r.class_name}</span></td>
+        <td><code style="font-size:.65rem;color:var(--muted)">${r.camera_id}</code></td>
+        <td class="text-nowrap" style="font-size:.65rem;color:var(--muted)">${last}</td>
       </tr>`;
     }
   }
-  tbody.innerHTML = html || '<tr><td colspan="4" class="text-center text-muted py-4">нет объектов</td></tr>';
+  tbody.innerHTML = html || '<tr><td colspan="4" class="text-center" style="color:var(--muted)">нет объектов</td></tr>';
 }
 
+function ps() { return window._PAGE_SIZE || PAGE_SIZE; }
+
 function renderPagination() {
-  const pages = Math.ceil(currentTotal / PAGE_SIZE);
-  const current = Math.floor(currentOffset / PAGE_SIZE);
+  const s = ps();
+  const pages = Math.ceil(currentTotal / s);
+  const current = Math.floor(currentOffset / s);
   let html = '<li class="page-item ' + (current === 0 ? 'disabled' : '') + '"><a class="page-link" href="#" onclick="loadObjects(0);return false">&laquo;</a></li>';
   for (let i = 0; i < pages && i < 15; i++) {
-    html += '<li class="page-item ' + (i === current ? 'active' : '') + '"><a class="page-link" href="#" onclick="loadObjects(' + (i * PAGE_SIZE) + ');return false">' + (i + 1) + '</a></li>';
+    html += '<li class="page-item ' + (i === current ? 'active' : '') + '"><a class="page-link" href="#" onclick="loadObjects(' + (i * s) + ');return false">' + (i + 1) + '</a></li>';
   }
   if (pages > 15) html += '<li class="page-item disabled"><a class="page-link" href="#">…</a></li>';
-  html += '<li class="page-item ' + (current >= pages - 1 ? 'disabled' : '') + '"><a class="page-link" href="#" onclick="loadObjects(' + ((pages - 1) * PAGE_SIZE) + ');return false">&raquo;</a></li>';
+  html += '<li class="page-item ' + (current >= pages - 1 ? 'disabled' : '') + '"><a class="page-link" href="#" onclick="loadObjects(' + ((pages - 1) * s) + ');return false">&raquo;</a></li>';
   document.getElementById('obj-pagi').innerHTML = html;
 }
 
@@ -382,12 +556,12 @@ async function loadGroupDetail(name, ids) {
   const empty = document.getElementById('frame-empty');
   div.style.display = 'none';
   empty.style.display = 'none';
-  grid.innerHTML = '<div class="text-center text-muted py-4">загрузка…</div>';
+  grid.innerHTML = '<div class="text-center" style="color:var(--muted);padding:20px">загрузка…</div>';
   document.getElementById('detail-name').value = name;
   document.getElementById('detail-title').textContent = 'Группа: ' + name;
-  document.getElementById('group-class-row').classList.remove('d-none');
+  document.getElementById('obj-class-row').classList.remove('d-none');
+  document.getElementById('obj-class-label').textContent = 'класс группы';
   document.getElementById('btn-ignore').classList.add('d-none');
-
   try {
     const allFrames = [];
     for (const id of ids.split(',')) {
@@ -396,7 +570,6 @@ async function loadGroupDetail(name, ids) {
       if (o.frames) allFrames.push(...o.frames.map(f => ({ ...f, camera_id: o.camera_id })));
     }
     allFrames.sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
-
     if (allFrames.length) {
       grid.innerHTML = allFrames.map(f => {
         const ts = f.timestamp ? f.timestamp.replace('T', ' ').slice(0, 19) : '';
@@ -404,23 +577,21 @@ async function loadGroupDetail(name, ids) {
         const cam = f.camera_id || '';
         const cls = f.class_name || '';
         return `<div class="frame-card position-relative" id="fc-${f.id}">
-          <img src="${f.image}" onclick="openLightbox('${f.image}')" class="w-100" style="height:140px;object-fit:cover;border-radius:4px;cursor:pointer" loading="lazy" onerror="this.style.display='none'">
-          <button class="btn btn-sm btn-outline-danger position-absolute top-0 end-0 m-1" style="font-size:10px;line-height:1;padding:2px 5px" onclick="deleteFrame('${f.id}')" title="Удалить кадр">&times;</button>
-          <div class="d-flex justify-content-between small text-muted mt-1 mb-1">
-            <span>${cam} ${conf}</span>
-            <span>${ts.slice(11, 19)}</span>
+          <img src="${f.image}" onclick="openLightbox('${f.image}')" loading="lazy" onerror="this.style.display='none'">
+          <button class="btn btn-xs btn-danger position-absolute top-0 end-0 m-1" style="font-size:10px;line-height:1;padding:0 4px;border-radius:3px" onclick="deleteFrame('${f.id}')" title="Удалить">&times;</button>
+          <div class="d-flex justify-content-between mt-1" style="font-size:.7rem;color:var(--muted)">
+            <span>${cam} ${conf}</span><span>${ts.slice(11,19)}</span>
           </div>
-          <select class="form-select form-select-sm" style="font-size:10px;padding:1px 4px" onchange="reclassifyFrame('${f.id}', this.value, '${cls}')">
+          <select class="form-select form-select-sm mt-1" style="font-size:.65rem;padding:0 2px" onchange="reclassifyFrame('${f.id}', this.value, '${cls}')">
             <option value="">класс</option>
-            ${['person','bicycle','car','motorcycle','bus','truck'].map(c => `<option value="${c}" ${c === cls ? 'selected' : ''}>${c}</option>`).join('')}
+            ${['person','bicycle','car','motorcycle','bus','truck'].map(c => `<option value="${c}" ${c===cls?'selected':''}>${c}</option>`).join('')}
           </select>
           ${nameInputHtml(f.id, '')}
         </div>`;
       }).join('');
-    } else {
-      empty.style.display = 'block';
-    }
+    } else { empty.style.display = 'block'; }
     div.style.display = 'block';
+    setTimeout(refreshAutocomplete, 50);
     div.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch { div.style.display = 'none'; }
 }
@@ -432,63 +603,84 @@ async function loadDetail(id) {
   const grid = document.getElementById('frame-grid');
   const empty = document.getElementById('frame-empty');
   div.style.display = 'none';
-  grid.innerHTML = '<div class="text-center text-muted py-4">загрузка…</div>';
+  grid.innerHTML = '<div class="text-center" style="color:var(--muted);padding:20px">загрузка…</div>';
   empty.style.display = 'none';
   document.getElementById('detail-name').value = '';
-
   try {
     const r = await fetch('/objects/' + id);
     const o = await r.json();
     document.getElementById('detail-title').textContent = o.class_name + ' @ ' + o.camera_id;
     document.getElementById('detail-name').value = o.name || '';
-    document.getElementById('group-class-row').classList.add('d-none');
+    document.getElementById('obj-class-row').classList.remove('d-none');
+    document.getElementById('obj-class-label').textContent = 'класс';
     document.getElementById('btn-ignore').classList.remove('d-none');
     document.getElementById('detail-meta').innerHTML = [
-      o.ignored ? '<span class="badge bg-warning text-dark">ignored</span>' : '',
+      o.ignored ? '<span class="badge-warn">ignored</span>' : '',
+      o.vmr ? 'VMR: ' + o.vmr : '',
       'замечен: ' + (o.last_seen ? o.last_seen.replace('T', ' ').slice(0, 19) : '—'),
       o.plate_number ? 'номер: ' + o.plate_number : '',
       o.face_id ? 'face: ' + o.face_id.slice(0, 12) + '…' : '',
     ].filter(Boolean).join(' · ');
     document.getElementById('btn-ignore').textContent = o.ignored ? 'Отмена' : 'Игнор';
-    document.getElementById('btn-ignore').className = o.ignored
-      ? 'btn btn-sm btn-outline-success' : 'btn btn-sm btn-outline-warning';
-
+    document.getElementById('btn-ignore').className = o.ignored ? 'btn btn-xs btn-outline-success' : 'btn btn-xs btn-outline-warning';
     if (o.frames && o.frames.length) {
       empty.style.display = 'none';
       grid.innerHTML = o.frames.map(f => {
         const ts = f.timestamp ? f.timestamp.replace('T', ' ').slice(0, 19) : '';
         const conf = f.confidence ? (f.confidence * 100).toFixed(0) + '%' : '';
         return `<div class="frame-card position-relative" id="fc-${f.id}">
-          <img src="${f.image}" onclick="openLightbox('${f.image}')" class="w-100" style="height:140px;object-fit:cover;border-radius:4px;cursor:pointer" loading="lazy" onerror="this.style.display='none'">
-          <button class="btn btn-sm btn-outline-danger position-absolute top-0 end-0 m-1" style="font-size:10px;line-height:1;padding:2px 5px" onclick="deleteFrame('${f.id}')" title="Удалить кадр">&times;</button>
-          <div class="d-flex justify-content-between small text-muted mt-1 mb-1">
-            <span>${conf}</span>
-            <span>${ts.slice(11, 19)}</span>
+          <img src="${f.image}" onclick="openLightbox('${f.image}')" loading="lazy" onerror="this.style.display='none'">
+          <button class="btn btn-xs btn-danger position-absolute top-0 end-0 m-1" style="font-size:10px;line-height:1;padding:0 4px;border-radius:3px" onclick="deleteFrame('${f.id}')" title="Удалить">&times;</button>
+          <div class="d-flex justify-content-between mt-1" style="font-size:.7rem;color:var(--muted)">
+            <span>${conf}</span><span>${ts.slice(11,19)}</span>
           </div>
-          <select class="form-select form-select-sm" style="font-size:10px;padding:1px 4px" onchange="reclassifyFrame('${f.id}', this.value, '${o.class_name}')">
+          <select class="form-select form-select-sm mt-1" style="font-size:.65rem;padding:0 2px" onchange="reclassifyFrame('${f.id}', this.value, '${o.class_name}')">
             <option value="">класс</option>
-            ${['person','bicycle','car','motorcycle','bus','truck'].map(c => `<option value="${c}" ${c === o.class_name ? 'selected' : ''}>${c}</option>`).join('')}
+            ${['person','bicycle','car','motorcycle','bus','truck'].map(c => `<option value="${c}" ${c===o.class_name?'selected':''}>${c}</option>`).join('')}
           </select>
           ${nameInputHtml(f.id, '')}
         </div>`;
       }).join('');
-    } else {
-      empty.style.display = 'block';
-      grid.innerHTML = '';
-    }
+    } else { empty.style.display = 'block'; grid.innerHTML = ''; }
     div.style.display = 'block';
+    setTimeout(refreshAutocomplete, 50);
     div.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } catch {
-    div.style.display = 'none';
-  }
+  } catch { div.style.display = 'none'; }
 }
 
 function closeDetail() {
   document.getElementById('detail').style.display = 'none';
-  document.getElementById('group-class-row').classList.add('d-none');
+  document.getElementById('obj-class-row').classList.add('d-none');
   document.getElementById('btn-ignore').classList.remove('d-none');
   currentObjId = null;
   currentGroupName = null;
+}
+
+// ---- Object class ----
+async function setObjClass() {
+  const cls = document.getElementById('obj-class-select').value;
+  if (!cls) return;
+  if (currentGroupName) {
+    try {
+      const r = await fetch('/objects/reclassify-group', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: currentGroupName, class_name: cls }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error();
+      alert('Обновлено: ' + d.updated + ' из ' + d.total + ' объектов → ' + cls);
+    } catch { alert('Ошибка'); }
+  } else if (currentObjId) {
+    try {
+      const r = await fetch('/objects/reclassify-group', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [currentObjId], class_name: cls }),
+      });
+      if (!r.ok) throw new Error();
+      loadDetail(currentObjId);
+      loadObjects(currentOffset);
+    } catch { alert('Ошибка'); }
+  }
 }
 
 // ---- Group class ----
@@ -498,8 +690,7 @@ async function setGroupClass() {
   if (!cls) return;
   try {
     const r = await fetch('/objects/reclassify-group', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: currentGroupName, class_name: cls }),
     });
     const d = await r.json();
@@ -514,18 +705,14 @@ async function saveName() {
   const name = document.getElementById('detail-name').value.trim() || null;
   try {
     const r = await fetch('/objects/' + currentObjId, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     });
     if (!r.ok) throw new Error();
-    const scrollY = document.querySelector('.table-scroll')?.scrollTop || 0;
+    const scrollY = document.getElementById('table-wrapper')?.scrollTop || 0;
     await loadObjects(currentOffset);
     refreshNameSuggestions();
-    setTimeout(() => {
-      const el = document.querySelector('.table-scroll');
-      if (el) el.scrollTop = scrollY;
-    }, 50);
+    setTimeout(() => { const el = document.getElementById('table-wrapper'); if (el) el.scrollTop = scrollY; }, 50);
   } catch { alert('Ошибка сохранения'); }
 }
 
@@ -545,7 +732,6 @@ async function deleteObject() {
   delModal.show();
 }
 
-// ---- Delete Frame ----
 async function deleteFrame(frameId) {
   if (!confirm('Удалить этот кадр?')) return;
   try {
@@ -555,7 +741,6 @@ async function deleteFrame(frameId) {
   } catch { alert('Ошибка удаления кадра'); }
 }
 
-// ---- Ignore ----
 async function ignoreObject() {
   if (!currentObjId) return;
   try {
@@ -574,35 +759,9 @@ function openLightbox(src) {
   lightboxModal.show();
 }
 
-// ---- Utils ----
-function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-
-// ---- Config reload ----
-async function reloadConfig() {
-  const btn = event.target;
-  btn.disabled = true;
-  btn.textContent = '…';
-  try {
-    const r = await fetch('/config/reload', { method: 'POST' });
-    const d = await r.json();
-    if (d.status === 'ok') {
-      loadFilterOptions();
-      btn.className = 'btn btn-sm btn-outline-success';
-      btn.textContent = '✓ OK';
-    } else {
-      btn.className = 'btn btn-sm btn-outline-danger';
-      btn.textContent = '✗ Error';
-    }
-  } catch {
-    btn.className = 'btn btn-sm btn-outline-danger';
-    btn.textContent = '✗ Error';
-  }
-  setTimeout(() => { btn.className = 'btn btn-sm btn-outline-warning'; btn.textContent = '↻ Config'; btn.disabled = false; }, 2000);
-}
-
 // ---- Move frame to group ----
 function nameInputHtml(frameId, currentName) {
-  return `<input class="form-control form-control-sm mt-1" style="font-size:10px;padding:1px 4px" list="name-suggestions" placeholder="в группу..." value="${escapeHtml(currentName || '')}" onfocus="this.select()" onchange="moveFrameToName('${frameId}', this)">`;
+  return `<div class="input-group input-group-sm mt-1"><div class="autocomplete-wrap" style="flex:1"><input class="form-control form-control-sm" style="font-size:.65rem;padding:0 4px;background:rgba(4,7,13,.6);border-color:rgba(255,255,255,.06);color:var(--text);width:100%" data-autocomplete placeholder="в группу..." value="${escapeHtml(currentName || '')}"></div><button class="btn btn-sm" style="font-size:.55rem;padding:0 5px;background:var(--accent);color:#04070d;border:none;font-weight:700" onclick="moveFrameToName('${frameId}', this.parentElement.querySelector('input'))">OK</button></div>`;
 }
 
 async function moveFrameToName(frameId, input) {
@@ -610,8 +769,7 @@ async function moveFrameToName(frameId, input) {
   if (!name) return;
   try {
     const r = await fetch('/frames/' + frameId + '/reclassify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     });
     if (!r.ok) throw new Error();
@@ -628,15 +786,16 @@ async function refreshNameSuggestions() {
     const names = (d.names || []).map(n => n.name).sort();
     datalist.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">`).join('');
     allNames = names;
+    setTimeout(refreshAutocomplete, 100);
   } catch {}
 }
 
+// ---- Reclassify frame ----
 async function reclassifyFrame(frameId, newClass, oldClass) {
   if (!newClass || newClass === oldClass) return;
   try {
     const r = await fetch('/frames/' + frameId + '/reclassify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ class_name: newClass }),
     });
     if (!r.ok) throw new Error();
@@ -644,9 +803,24 @@ async function reclassifyFrame(frameId, newClass, oldClass) {
   } catch { alert('Ошибка'); }
 }
 
-// ---- Training modal ----
-let trainModal, trainPoll;
+// ---- Live preview ----
+async function loadLive() {
+  try {
+    const r = await fetch('/live');
+    if (!r.ok) return;
+    const d = await r.json();
+    const div = document.getElementById('live-preview');
+    div.classList.remove('d-none');
+    document.getElementById('live-img').src = d.image;
+    document.getElementById('live-class').textContent = d.class_name;
+    document.getElementById('live-name').textContent = d.name ? '"' + d.name + '"' : '—';
+    document.getElementById('live-cam').textContent = d.camera_id;
+    document.getElementById('live-conf').textContent = d.confidence ? (d.confidence * 100).toFixed(0) + '%' : '—';
+    document.getElementById('live-ts').textContent = d.timestamp ? d.timestamp.replace('T', ' ').slice(0, 19) : '—';
+  } catch {}
+}
 
+// ---- Training modal ----
 async function openTraining() {
   if (!trainModal) trainModal = new bootstrap.Modal(document.getElementById('trainModal'));
   trainModal.show();
@@ -660,36 +834,33 @@ async function loadTrainingCandidates() {
     document.getElementById('train-min').textContent = d.min_samples;
     const running = d.running || {};
     renderRunning(running);
-
-    // Only rebuild table if not currently polling (to avoid blink on refreshes)
     const tbody = document.getElementById('train-tbody');
     tbody.innerHTML = '';
     if (!d.candidates.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">нет именованных объектов</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center" style="color:var(--muted)">нет именованных объектов</td></tr>';
     } else {
       tbody.innerHTML = d.candidates.map(c => {
         const busy = running[c.name] && (running[c.name].status === 'collecting' || running[c.name].status === 'training');
         const allBusy = running['__all__'] && (running['__all__'].status === 'collecting' || running['__all__'].status === 'training');
         const disabled = !c.ready || busy || allBusy ? 'disabled' : '';
-        const badge = c.ready ? '<span class="badge bg-success">да</span>' : '<span class="badge bg-secondary">нет</span>';
+        const btnText = (busy || allBusy) ? 'работает…' : 'Запустить';
+        const badge = c.ready ? '<span class="badge-ok">да</span>' : '<span class="badge-no">нет</span>';
         return `<tr>
-          <td><span class="text-info fw-semibold">${escapeHtml(c.name)}</span></td>
-          <td><span class="badge bg-info">${c.class_name}</span></td>
+          <td><span class="text-grad fw-semibold">${escapeHtml(c.name)}</span></td>
+          <td><span class="badge-class">${c.class_name}</span></td>
           <td>${c.objects}</td>
           <td>${c.frames}</td>
           <td>${badge}</td>
-          <td><button class="btn btn-sm btn-outline-primary" ${disabled} onclick="startTraining('${escapeHtml(c.name)}')">Запустить</button></td>
+          <td><button class="btn-neon btn-xs" ${disabled} data-name="${escapeHtml(c.name)}" onclick="startTraining('${escapeHtml(c.name)}')">${btnText}</button></td>
+          <td><a class="btn-muted btn-xs" href="/training/export?name=${encodeURIComponent(c.name)}" style="text-decoration:none" title="Скачать датасет">ZIP</a></td>
         </tr>`;
       }).join('');
     }
-
-    // Auto-poll only while training is active
     const active = Object.values(running).some(s => s.status === 'collecting' || s.status === 'training');
     if (active && !trainPoll) {
       trainPoll = setInterval(pollTrainingStatus, 5000);
     } else if (!active && trainPoll) {
-      clearInterval(trainPoll);
-      trainPoll = null;
+      clearInterval(trainPoll); trainPoll = null;
     }
   } catch {}
 }
@@ -701,42 +872,8 @@ async function pollTrainingStatus() {
     const running = d.running || {};
     renderRunning(running);
     const active = Object.values(running).some(s => s.status === 'collecting' || s.status === 'training');
-    if (!active && trainPoll) {
-      clearInterval(trainPoll);
-      trainPoll = null;
-    }
+    if (!active && trainPoll) { clearInterval(trainPoll); trainPoll = null; }
   } catch {}
-}
-
-async function loadTrainingCandidates() {
-  const tbody = document.getElementById('train-tbody');
-    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">загрузка…</td></tr>';
-  try {
-    const r = await fetch('/training/candidates');
-    const d = await r.json();
-    document.getElementById('train-min').textContent = d.min_samples;
-    renderRunning(d.running || {});
-    if (!d.candidates.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">нет именованных объектов</td></tr>';
-      return;
-    }
-    tbody.innerHTML = d.candidates.map(c => {
-      const running = (d.running || {})[c.name] || (d.running || {})['__all__'];
-      const busy = running && (running.status === 'collecting' || running.status === 'training');
-      const disabled = !c.ready || busy ? 'disabled' : '';
-      const badge = c.ready ? '<span class="badge bg-success">да</span>' : '<span class="badge bg-secondary">нет</span>';
-      return `<tr>
-        <td><span class="text-info fw-semibold">${escapeHtml(c.name)}</span></td>
-        <td><span class="badge bg-info">${c.class_name}</span></td>
-        <td>${c.objects}</td>
-        <td>${c.frames}</td>
-        <td>${badge}</td>
-        <td><button class="btn btn-sm btn-outline-primary" ${disabled} onclick="startTraining('${escapeHtml(c.name)}')">Запустить</button></td>
-      </tr>`;
-    }).join('');
-  } catch {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">ошибка</td></tr>';
-  }
 }
 
 function renderRunning(state) {
@@ -746,20 +883,27 @@ function renderRunning(state) {
   div.classList.remove('d-none');
   div.innerHTML = keys.map(([k, s]) => {
     const label = k === '__all__' ? 'все' : k;
-    const st = s.status;
-    let info = st;
-    if (st === 'training' && s.epoch) info = `эпоха ${s.epoch}/${s.total_epochs} box=${s.box_loss} cls=${s.cls_loss}`;
-    if (st === 'done') info = '✓ завершено';
-    if (st === 'failed') info = '✗ ошибка: ' + (s.error || '');
-    if (st === 'skipped') info = '— пропущено: ' + (s.reason || '');
-    const clr = st === 'done' ? 'text-success' : st === 'failed' ? 'text-danger' : st === 'skipped' ? 'text-warning' : 'text-info';
-    return `<div class="${clr}"><strong>${escapeHtml(label)}</strong>: ${info}</div>`;
+    let info = s.status;
+    if (s.status === 'training' && s.epoch) info = `эпоха ${s.epoch}/${s.total_epochs}`;
+    if (s.status === 'done') info = '✓ завершено';
+    if (s.status === 'failed') info = '✗ ошибка: ' + (s.error || '');
+    if (s.status === 'skipped') info = '— пропущено: ' + (s.reason || '');
+    const clr = s.status === 'done' ? 'var(--accent)' : s.status === 'failed' ? '#dc3545' : s.status === 'skipped' ? '#ffc107' : 'var(--accent2)';
+    return `<div style="color:${clr}"><strong>${escapeHtml(label)}</strong>: ${info}</div>`;
   }).join('');
   document.getElementById('btn-train-all').disabled = keys.some(([_,s]) => s.status === 'collecting' || s.status === 'training');
 }
 
 async function startTraining(name) {
   const q = name ? '?name=' + encodeURIComponent(name) : '';
+  // Mark button as running immediately
+  if (name) {
+    const btn = document.querySelector(`button[data-name="${name.replace(/"/g, '\\"')}"]`);
+    if (btn) { btn.textContent = 'работает…'; btn.disabled = true; }
+  } else {
+    const b = document.getElementById('btn-train-all');
+    if (b) { b.textContent = 'работает…'; b.disabled = true; }
+  }
   try {
     const r = await fetch('/training/run' + q, { method: 'POST' });
     if (!r.ok) { const d = await r.json(); alert(d.message || 'Ошибка'); return; }
@@ -767,27 +911,30 @@ async function startTraining(name) {
   } catch { alert('Ошибка запуска'); }
 }
 
-// ---- Live preview ----
-async function loadLive() {
+// ---- Config reload ----
+async function reloadConfig() {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '…';
   try {
-    const r = await fetch('/live');
-    if (!r.ok) return;
+    const r = await fetch('/config/reload', { method: 'POST' });
     const d = await r.json();
-    const div = document.getElementById('live-preview');
-    div.classList.remove('d-none');
-    document.getElementById('live-img').src = d.image;
-    document.getElementById('live-class').textContent = d.class_name;
-    document.getElementById('live-name').textContent = d.name || '—';
-    document.getElementById('live-cam').textContent = d.camera_id;
-    document.getElementById('live-conf').textContent = d.confidence ? (d.confidence * 100).toFixed(0) + '%' : '—';
-    document.getElementById('live-ts').textContent = d.timestamp ? d.timestamp.replace('T', ' ').slice(0, 19) : '—';
-  } catch {}
+    if (d.status === 'ok') {
+      loadFilterOptions();
+      btn.className = 'btn btn-xs btn-outline-success';
+      btn.textContent = '✓ OK';
+    } else {
+      btn.className = 'btn btn-xs btn-outline-danger';
+      btn.textContent = '✗ Error';
+    }
+  } catch {
+    btn.className = 'btn btn-xs btn-outline-danger';
+    btn.textContent = '✗ Error';
+  }
+  setTimeout(() => { btn.className = 'btn-neon'; btn.textContent = '↻ Config'; btn.disabled = false; }, 2000);
 }
 
 // ---- Auto-refresh ----
-let autoPaused = false;
-let refreshIntervals = [];
-
 function startAutoRefresh() {
   stopAutoRefresh();
   refreshIntervals = [
@@ -805,22 +952,143 @@ function stopAutoRefresh() {
 }
 
 function togglePause() {
-  if (autoPaused) {
-    startAutoRefresh();
-  } else {
-    stopAutoRefresh();
-    document.getElementById('btn-pause').textContent = '▶';
-    autoPaused = true;
+  if (autoPaused) { startAutoRefresh(); }
+  else { stopAutoRefresh(); document.getElementById('btn-pause').textContent = '▶'; autoPaused = true; }
+}
+
+// ---- Utils ----
+function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// ---- Custom Autocomplete ----
+function initAutocomplete(input) {
+  const wrap = input.closest('.autocomplete-wrap');
+  if (!wrap || input._acInit) return;
+  input._acInit = true;
+  const drop = document.createElement('div');
+  drop.className = 'autocomplete-drop';
+  wrap.appendChild(drop);
+  let activeIdx = -1;
+
+  input.addEventListener('input', () => {
+    const val = input.value.toLowerCase();
+    const matches = allNames.filter(n => n.toLowerCase().includes(val)).slice(0, 8);
+    if (!matches.length || !val) { drop.classList.remove('show'); activeIdx = -1; return; }
+    drop.innerHTML = matches.map(n => `<div>${escapeHtml(n)}</div>`).join('');
+    const rect = input.getBoundingClientRect();
+    drop.style.left = rect.left + 'px';
+    drop.style.width = rect.width + 'px';
+    if (rect.bottom + 200 > window.innerHeight) {
+      drop.style.top = (rect.top - 180) + 'px';
+    } else {
+      drop.style.top = rect.bottom + 'px';
+    }
+    drop.classList.add('show');
+    activeIdx = -1;
+  });
+
+  input.addEventListener('keydown', (e) => {
+    const divs = drop.querySelectorAll('div');
+    if (!drop.classList.contains('show') || !divs.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, divs.length - 1); updateActive(divs); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = Math.max(activeIdx - 1, 0); updateActive(divs); }
+    else if (e.key === 'Enter' && activeIdx >= 0) { 
+      e.preventDefault(); 
+      input.value = divs[activeIdx].textContent; 
+      drop.classList.remove('show'); 
+      input.dispatchEvent(new Event('change', {bubbles:true}));
+    }
+  });
+
+  drop.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    if (e.target.tagName === 'DIV') { 
+      input.value = e.target.textContent; 
+      drop.classList.remove('show'); 
+      input.dispatchEvent(new Event('change', {bubbles:true})); 
+      input.focus();
+    }
+  });
+
+  input.addEventListener('blur', () => { setTimeout(() => drop.classList.remove('show'), 200); });
+  input.addEventListener('focus', () => { if (input.value && allNames.some(n => n.toLowerCase().includes(input.value.toLowerCase()))) input.dispatchEvent(new Event('input')); });
+
+  function updateActive(divs) {
+    divs.forEach((d, i) => d.classList.toggle('active', i === activeIdx));
   }
 }
 
+function refreshAutocomplete() {
+  document.querySelectorAll('input[data-autocomplete]').forEach(initAutocomplete);
+}
+
 // ---- Init ----
-loadHealth();
-loadFilterOptions();
-loadLive();
-for (const id of ['filter-camera','filter-class','filter-name'])
-  document.getElementById(id).addEventListener('change', saveFilters);
-startAutoRefresh();
+(function initBg() {
+  var container = document.getElementById('bg-bars');
+  if (!container) return;
+  var NUM = 35, winH, winW, barH, marginV, startTime = Date.now(), barData = [];
+  function recalc() { winH = window.innerHeight; winW = window.innerWidth; barH = winH * 5; marginV = winH * 2; }
+  recalc();
+  for (var i = 0; i < NUM; i++) {
+    var bar = document.createElement('div');
+    bar.className = 'bg-bar';
+    if (i % 4 === 0) bar.classList.add('purple');
+    var w = 14 + Math.random() * 80;
+    var baseLeftPct = (i / NUM) * 100 + (Math.random() - 0.5) * 6;
+    bar.style.width = w + 'px';
+    bar.style.height = barH + 'px';
+    bar.style.top = '-' + marginV + 'px';
+    bar.style.left = baseLeftPct + '%';
+    var startDimmed = Math.random() > 0.55;
+    if (startDimmed) bar.classList.add('dim');
+    container.appendChild(bar);
+    barData.push({
+      el: bar, width: w,
+      speedY: 0.2 + Math.random() * 2.2,
+      speedX: 0.5 + Math.random() * 1,
+      basePosY: (Math.random() - 0.5) * winH * 1.2,
+      baseLeftPct: baseLeftPct,
+      nextFade: 8 + Math.random() * 12,
+      dimmed: startDimmed,
+      dimStart: startDimmed ? startTime - 1000 - Math.random() * 3000 : 0
+    });
+  }
+  function drift() {
+    var now = Date.now(), elapsed = (now - startTime) / 1000, scrollY = window.pageYOffset;
+    barData.forEach(function(d) {
+      var y = d.basePosY - scrollY * d.speedY * 0.6;
+      while (y < -marginV) y += barH;
+      while (y > marginV + barH) y -= barH;
+      var driftPx = (elapsed * d.speedX * winW) / 120;
+      driftPx = driftPx % (winW + d.width + 100);
+      var barL = (d.baseLeftPct / 100) * winW;
+      var mappedX = ((barL - driftPx) % (winW + d.width + 100));
+      if (mappedX < -d.width - 50) mappedX += winW + d.width + 100;
+      d.el.style.transform = 'translateY(' + y + 'px) translateX(' + (mappedX - barL) + 'px)';
+      d.nextFade -= 0.016;
+      if (!d.dimmed && d.nextFade <= 0) { d.dimmed = true; d.dimStart = now; d.el.classList.add('dim'); }
+      if (d.dimmed && (now - d.dimStart) > 3000) { d.dimmed = false; d.el.classList.remove('dim'); d.nextFade = 8 + Math.random() * 20; }
+    });
+    requestAnimationFrame(drift);
+  }
+  requestAnimationFrame(drift);
+})();
+
+async function init() {
+  try {
+    const r = await fetch('/settings');
+    const s = await r.json();
+    if (s.ui) {
+      if (s.ui.page_size) window._PAGE_SIZE = s.ui.page_size;
+    }
+  } catch {}
+  loadHealth();
+  loadFilterOptions();
+  loadLive();
+  for (const id of ['filter-camera','filter-class','filter-name'])
+    document.getElementById(id).addEventListener('change', saveFilters);
+  startAutoRefresh();
+}
+init();
 </script>
 </body>
 </html>

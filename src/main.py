@@ -24,7 +24,13 @@ from .pipeline import CameraPipeline
 from .stats import StatsCollector
 from .storage import init_db, close_db, init_pgvector, init_schema, StorageRepository, get_session
 from .storage.models import TrackedObject, FrameCapture
-from .actions import ActionDispatcher, MQTTAction
+from .actions import ActionDispatcher
+
+# MQTT — optional, enable in settings.yaml
+try:
+    from .actions import MQTTAction as _MQTTAction
+except ImportError:
+    _MQTTAction = None
 from .training import FineTuner
 
 
@@ -96,13 +102,15 @@ async def main():
     data_dir = Path(settings.get("app", {}).get("data_dir", "/data/frames"))
     repository = StorageRepository(data_dir=data_dir)
 
-    # --- MQTT ---
-    mqtt_cfg = settings.get("mqtt", {})
-    MQTTAction.configure(
-        host=os.environ.get("MQTT_HOST", mqtt_cfg.get("host", "localhost")),
-        port=int(os.environ.get("MQTT_PORT", mqtt_cfg.get("port", 1883))),
-        client_id=mqtt_cfg.get("client_id", "cam-analyzer"),
-    )
+    # --- MQTT (optional) ---
+    if settings.get("mqtt", {}).get("enabled", False) and _MQTTAction is not None:
+        mqtt_cfg = settings.get("mqtt", {})
+        _MQTTAction.configure(
+            host=os.environ.get("MQTT_HOST", mqtt_cfg.get("host", "localhost")),
+            port=int(os.environ.get("MQTT_PORT", mqtt_cfg.get("port", 1883))),
+            client_id=mqtt_cfg.get("client_id", "cam-analyzer"),
+        )
+        logger.info("MQTT enabled")
 
     dispatcher = ActionDispatcher()
     dispatcher.load_triggers(triggers_cfg.get("triggers", []))
@@ -113,7 +121,7 @@ async def main():
         return
 
     # --- Stats ---
-    stats_collector = StatsCollector(log_interval=30.0)
+    stats_collector = StatsCollector(log_interval=float(settings.get("general", {}).get("stats_log_interval_seconds", 30)))
 
     # --- Pipelines ---
     pipelines: list[CameraPipeline] = []
@@ -135,7 +143,7 @@ async def main():
     # --- Stats log background task ---
     async def stats_loop():
         while True:
-            await asyncio.sleep(30)
+            await asyncio.sleep(float(settings.get("general", {}).get("stats_log_interval_seconds", 30)))
             stats_collector.maybe_log()
 
     tasks.append(asyncio.create_task(stats_loop()))
@@ -145,7 +153,8 @@ async def main():
         from sqlalchemy import delete
         from src.storage.models import FrameCapture, TrackedObject, Event
         while True:
-            await asyncio.sleep(300)
+            interval = int(settings.get("general", {}).get("cleanup_interval_seconds", 300))
+            await asyncio.sleep(interval)
             try:
                 async with await get_session() as session:
                     # Delete frames whose parent object no longer exists
@@ -240,6 +249,10 @@ async def main():
         frame = await repository.get_latest_frame()
         if frame is None:
             return web.json_response({"error": "no frames"}, status=404)
+        if frame.get("timestamp"):
+            from datetime import datetime
+            ts = datetime.fromisoformat(frame["timestamp"])
+            frame["timestamp"] = ts.replace(tzinfo=timezone.utc).astimezone(MSK).isoformat()
         return web.json_response(frame)
 
     async def handle_list_objects(request: web.Request) -> web.Response:
@@ -276,6 +289,7 @@ async def main():
                 "ignored": obj.ignored,
                 "plate_number": obj.plate_number,
                 "face_id": obj.face_id,
+                "vmr": (obj.metadata_ or {}).get("vmr"),
                 "first_seen": _local(obj.first_seen),
                 "last_seen": _local(obj.last_seen),
                 "appearance_count": obj.appearance_count,
@@ -301,6 +315,7 @@ async def main():
             "ignored": obj.ignored,
             "plate_number": obj.plate_number,
             "face_id": obj.face_id,
+            "vmr": (obj.metadata_ or {}).get("vmr"),
             "first_seen": _local(obj.first_seen),
             "last_seen": _local(obj.last_seen),
             "appearance_count": obj.appearance_count,
@@ -372,9 +387,13 @@ async def main():
             return web.json_response({"error": "invalid JSON"}, status=400)
         name = body.get("name", "").strip()
         new_class = body.get("class_name", "").strip()
-        if not name or not new_class:
-            return web.json_response({"error": "name and class_name required"}, status=400)
-        data = await repository.reclassify_group(name, new_class)
+        ids = body.get("ids")
+        if not new_class or (not name and not ids):
+            return web.json_response({"error": "name or ids + class_name required"}, status=400)
+        if ids:
+            data = await repository.reclassify_by_ids(ids, new_class)
+        else:
+            data = await repository.reclassify_group(name, new_class)
         return web.json_response(data)
 
     async def handle_get_frame(request: web.Request) -> web.Response:
@@ -411,6 +430,22 @@ async def main():
             "names": [n["name"] for n in names],
         })
 
+    async def handle_settings(request: web.Request) -> web.Response:
+        return web.json_response({
+            "ui": settings.get("ui", {}),
+            "training": {
+                "min_samples_per_class": settings.get("training", {}).get("min_samples_per_class", 30),
+                "min_show_frames": settings.get("training", {}).get("min_show_frames", 5),
+            },
+            "detector": {
+                "confidence": settings.get("detector", {}).get("confidence", 0.6),
+                "model": settings.get("detector", {}).get("model", "yolo11m.pt"),
+            },
+            "general": {
+                "cleanup_interval_seconds": settings.get("general", {}).get("cleanup_interval_seconds", 300),
+            },
+        })
+
     async def handle_ignore_object(request):
         obj_id = uuid.UUID(request.match_info["id"])
         changed = False
@@ -442,6 +477,17 @@ async def main():
         candidates = await fine_tuner.list_candidates()
         return web.json_response({"candidates": candidates, "min_samples": fine_tuner.min_samples, "running": training_state})
 
+    async def handle_training_export(request: web.Request) -> web.Response:
+        name = request.query.get("name") or None
+        zip_path = await fine_tuner.export_zip(name_filter=name)
+        if zip_path is None:
+            return web.json_response({"error": "not enough samples or no named objects"}, status=404)
+        filename = zip_path.name
+        return web.FileResponse(zip_path, headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Type": "application/zip",
+        })
+
     async def handle_training_trigger(request: web.Request) -> web.Response:
         name = request.query.get("name") or None
         key = name or "__all__"
@@ -453,6 +499,21 @@ async def main():
     async def handle_config_reload(request: web.Request) -> web.Response:
         nonlocal settings, cameras_cfg, triggers_cfg
         logger.info("Reloading configuration...")
+        ...
+
+    async def handle_model_reset(request: web.Request) -> web.Response:
+        import os
+        fine_tuned = Path(settings.get("app", {}).get("models_dir", "/app/models")) / "fine-tuned.pt"
+        if fine_tuned.exists():
+            fine_tuned.unlink()
+            logger.info("Fine-tuned model deleted, reloading base model")
+            for pl in pipelines:
+                base = str(fine_tuned.parent / "ultralytics" / "yolo11m.pt")
+                if not os.path.isfile(base):
+                    base = str(fine_tuned.parent / "yolo11m.pt")
+                await pl.reload_detector(base)
+            return web.json_response({"status": "ok", "message": "Reverted to base model"})
+        return web.json_response({"status": "ok", "message": "No fine-tuned model found"})
         try:
             new_settings = load_settings(config_dir)
             new_cameras_cfg = load_cameras(config_dir)
@@ -510,12 +571,15 @@ async def main():
 
     health_app.router.add_get("/training/status", handle_training_status)
     health_app.router.add_get("/training/candidates", handle_training_candidates)
+    health_app.router.add_get("/training/export", handle_training_export)
     health_app.router.add_post("/training/run", handle_training_trigger)
     health_app.router.add_post("/config/reload", handle_config_reload)
+    health_app.router.add_post("/model/reset", handle_model_reset)
 
     health_app.router.add_get("/objects", handle_list_objects)
     health_app.router.add_get("/objects/names", handle_list_names)
     health_app.router.add_get("/filters", handle_filters)
+    health_app.router.add_get("/settings", handle_settings)
     health_app.router.add_get("/objects/{id}", handle_get_object)
     health_app.router.add_patch("/objects/{id}", handle_patch_object)
     health_app.router.add_delete("/objects/{id}", handle_delete_object)
@@ -553,7 +617,8 @@ async def main():
         pass
     finally:
         await runner.cleanup()
-        await MQTTAction.disconnect()
+        if _MQTTAction is not None:
+            await _MQTTAction.disconnect()
         await close_db()
         logger.info("Shutdown complete")
 

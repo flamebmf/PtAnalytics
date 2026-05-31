@@ -1,12 +1,22 @@
 cameras:
+  - id: "gate1"
+    name: "Въездные ворота"
+    rtsp_url: "rtsp://rtsp:cu2W25TpQX3W@192.168.10.18/mode=real&idc=1&ids=1?rtsp_transport=tcp"
+    fps: 10
+    enabled: true
+    motion_enabled: true
+    roi: []
+    motion_threshold: 0.005
+    detector:
+      imgsz: 1280
   - id: "parking1"
     name: "Парковка 1"
     rtsp_url: "rtsp://rtsp:cu2W25TpQX3W@192.168.10.18/mode=real&idc=6&ids=1?rtsp_transport=tcp"
     fps: 10
     enabled: true
-    motion_enabled: false
+    motion_enabled: true
     roi: []
-    motion_threshold: 0.15
+    motion_threshold: 0.005
     detector:
       imgsz: 1280
   - id: "entrance"
@@ -14,8 +24,8 @@ cameras:
     rtsp_url: "rtsp://rtsp:cu2W25TpQX3W@192.168.10.18/mode=real&idc=2&ids=1?rtsp_transport=tcp"
     fps: 10
     enabled: true
-    motion_enabled: false
+    motion_enabled: true
     roi: []
-    motion_threshold: 0.15
+    motion_threshold: 0.005
     detector:
       imgsz: 1280

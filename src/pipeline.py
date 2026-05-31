@@ -13,7 +13,7 @@ from .capture import StreamReader
 from .motion import MotionDetector, MotionMethod
 from .detection import YoloDetector
 from .tracking import DeepSortTracker
-from .recognition import LPRRecognizer, FaceRecognizer
+from .recognition import LPRRecognizer, FaceRecognizer, VMRRecognizer
 from .recognition.reid import compute_embedding
 from .storage import StorageRepository
 from .storage.models import TrackedObject
@@ -90,6 +90,12 @@ class CameraPipeline:
             enabled=face_cfg.get("enabled", True),
         )
 
+        vmr_cfg = settings.get("vmr", {})
+        self.vmr = VMRRecognizer(
+            min_confidence=vmr_cfg.get("min_confidence", 0.3),
+            enabled=vmr_cfg.get("enabled", True),
+        )
+
         self.repo = repository
         self.dispatcher = dispatcher
         self.stats = PipelineStats(camera_id=self.cam_id, camera_name=self.cam_name)
@@ -97,6 +103,9 @@ class CameraPipeline:
         self._last_processed = 0.0
         self._active_tracks: dict[int, dict] = {}
         self._last_obj_by_track: dict[int, TrackedObject] = {}
+        self._frame_buffer: dict[int, list[dict]] = {}
+        self._processed_tracks: set[int] = set()
+        self._buf_size = max(5, int(trk_cfg.get("frame_buffer_size", 30)))
         self.track_depart_timeout = settings.get("tracker", {}).get("depart_timeout", 3.0)
 
         # Dataset collection (3 crops per track: entry, mid, exit)
@@ -220,19 +229,32 @@ class CameraPipeline:
                     if tid not in self._crop_phase:
                         self._crop_phase[tid] = 0
 
-                # Process only NEW tracks (appeared or reappeared)
+                # Buffer frames for entry/exit selection (keep last 30 per track)
                 for track in tracks:
                     tid = track["track_id"]
+                    area = (track["bbox"][2] - track["bbox"][0]) * (track["bbox"][3] - track["bbox"][1])
+                    self._frame_buffer.setdefault(tid, []).append({
+                        "frame": frame.copy(), "track": track, "area": area,
+                        "confidence": track.get("confidence", 0),
+                        "is_reappeared": tid in self._last_obj_by_track,
+                    })
+                    buf = self._frame_buffer[tid]
+                    if len(buf) > self._buf_size:
+                        buf.pop(0)
+
                     if tid not in self._active_tracks:
-                        is_reappeared = tid in self._last_obj_by_track
                         self._active_tracks[tid] = {
                             "class_name": track["class_name"],
                             "first_seen": time(),
                             "missing_since": 0.0,
                         }
+
+                    if tid not in self._processed_tracks and track.get("status") == "confirmed":
+                        self._processed_tracks.add(tid)
+                        best = max(buf, key=lambda x: x["area"] * x["confidence"])
                         await self._process_track(
-                            frame, track,
-                            reappeared=is_reappeared,
+                            best["frame"], best["track"],
+                            reappeared=best["is_reappeared"],
                         )
                     else:
                         self._active_tracks[tid]["missing_since"] = 0.0
@@ -263,18 +285,28 @@ class CameraPipeline:
                         if td["missing_since"] == 0.0:
                             td["missing_since"] = now
                         elif now - td["missing_since"] >= self.track_depart_timeout:
-                            # Exit crop before cleanup
+                            # Exit crop — use best recent frame from buffer
                             if self.crop_enabled and self._crop_phase.get(tid, 0) in (1, 2):
-                                bbox = self._last_bbox.get(tid)
-                                cn = self._last_class_name.get(tid)
-                                ci = self._last_class_id.get(tid)
-                                lf = self._last_frame.get(tid)
+                                buf = self._frame_buffer.get(tid, [])
+                                if buf:
+                                    best = max(buf, key=lambda x: x["area"] * x.get("confidence", 0))
+                                    lf = best["frame"]
+                                    cn = self._last_class_name.get(tid)
+                                    ci = self._last_class_id.get(tid)
+                                    bbox = best["track"]["bbox"]
+                                else:
+                                    lf = self._last_frame.get(tid)
+                                    cn = self._last_class_name.get(tid)
+                                    ci = self._last_class_id.get(tid)
+                                    bbox = self._last_bbox.get(tid)
                                 if bbox and cn is not None and ci is not None and lf is not None:
                                     await self.repo.save_crop(
                                         self.cam_id, cn, ci, lf, bbox, phase="exit",
                                     )
                                 self._crop_phase[tid] = 4
                             self._active_tracks.pop(tid)
+                            self._frame_buffer.pop(tid, None)
+                            self._processed_tracks.discard(tid)
                             logger.info(
                                 f"[{self.cam_name}] Track {tid} ({td['class_name']}) "
                                 f"departed after {now - td['first_seen']:.0f}s"
@@ -326,6 +358,7 @@ class CameraPipeline:
         face_id: Optional[str] = None
         face_hash: Optional[str] = None
         embedding: Optional[list[float]] = None
+        vmr_result: Optional[dict] = None
 
         vehicle_classes = {"car", "truck", "bus", "motorcycle"}
 
@@ -334,6 +367,13 @@ class CameraPipeline:
             if plate_number:
                 logger.info(f"[{self.cam_name}] Plate detected: {plate_number}")
                 self.stats.plates_recognized += 1
+
+        if class_name in vehicle_classes and self.vmr.enabled:
+            vmr_result = await asyncio.get_running_loop().run_in_executor(
+                None, self._run_vmr, frame, bbox
+            )
+            if vmr_result:
+                logger.info(f"[{self.cam_name}] VMR: {vmr_result['brand']} ({vmr_result['confidence']:.2f})")
 
         if class_name == "person" and self.face_recognizer.enabled:
             faces = self.face_recognizer.detect_faces(frame)
@@ -368,6 +408,10 @@ class CameraPipeline:
             )
             self.stats.objects_stored += 1
             self._last_obj_by_track[track_id] = obj
+            if vmr_result and obj and not obj.metadata_:
+                obj.metadata_ = {"vmr": vmr_result.get("brand")}
+            elif vmr_result and obj and obj.metadata_:
+                obj.metadata_["vmr"] = vmr_result.get("brand")
         except Exception as e:
             logger.error(f"DB error saving object: {e}")
             self.stats.db_errors += 1
@@ -464,6 +508,11 @@ class CameraPipeline:
         if track_id in self._last_obj_by_track:
             self._last_obj_by_track[track_id].ignored = True
             logger.info(f"[{self.cam_name}] Track {track_id} marked ignored in memory")
+
+    def _run_vmr(self, frame, bbox):
+        x1, y1, x2, y2 = bbox
+        crop = frame[y1:y2, x1:x2]
+        return self.vmr.classify(crop)
 
     VEHICLE_IDS = {2, 3, 5, 7}  # car, motorcycle, bus, truck
 

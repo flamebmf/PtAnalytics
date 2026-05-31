@@ -19,6 +19,7 @@ class FaceRecognizer:
         if self._face_app is None and self.enabled:
             try:
                 import insightface
+                logger.info("Loading InsightFace model...")
                 self._face_app = insightface.app.FaceAnalysis(
                     name="buffalo_l",   # detection + recognition
                     providers=["CPUExecutionProvider"],

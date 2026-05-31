@@ -17,6 +17,8 @@ training/extracted/
 training/models/
 training/dataset-*.zip
 training/yolo*.pt
+training/fine-tuned-*.pt
+training/.train-state.json
 
 # IDE
 .idea/

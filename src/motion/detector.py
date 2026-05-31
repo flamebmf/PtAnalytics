@@ -24,7 +24,7 @@ class MotionDetector:
 
         if method == MotionMethod.MOG2:
             self._bg_subtractor = cv2.createBackgroundSubtractorMOG2(
-                history=500, varThreshold=36, detectShadows=False
+                history=500, varThreshold=16, detectShadows=False
             )
         else:
             self._bg_subtractor = None
@@ -37,7 +37,7 @@ class MotionDetector:
             work = cv2.resize(frame, self.resize_to, interpolation=cv2.INTER_NEAREST)
 
         if self.method == MotionMethod.MOG2:
-            fg_mask = self._bg_subtractor.apply(work, learningRate=0.01)
+            fg_mask = self._bg_subtractor.apply(work, learningRate=0.005)
         else:
             gray = cv2.cvtColor(work, cv2.COLOR_BGR2GRAY)
             gray = cv2.GaussianBlur(gray, (21, 21), 0)

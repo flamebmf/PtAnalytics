@@ -17,8 +17,8 @@ asyncpg>=0.29.0
 pgvector>=0.3.2
 alembic>=1.13.0
 
-# MQTT
-paho-mqtt>=2.1.0
+# MQTT (optional, enable in settings.yaml → mqtt.enabled: true)
+# paho-mqtt>=2.1.0
 
 # HTTP / webhooks
 aiohttp>=3.9.0
@@ -30,3 +30,7 @@ pyyaml>=6.0
 pillow>=10.3.0
 python-dateutil>=2.9.0
 loguru>=0.7.2
+
+# VMR (CLIP)
+transformers>=4.40.0
+torch>=2.0.0

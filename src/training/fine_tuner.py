@@ -2,6 +2,7 @@ import asyncio
 import os
 import shutil
 import uuid
+import zipfile
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
@@ -35,7 +36,9 @@ class FineTuner:
         self.base_model = self.cfg.get("base_model", "yolo11m.pt")
         self.device = config.get("detector", {}).get("device", "cpu")
         self.workers = config.get("detector", {}).get("workers")
-        self.net = None  # last dataset size
+        self.batch_size = self.cfg.get("batch_size", 8)
+        self.min_show = self.cfg.get("min_show_frames", 5)
+        self.net = None
 
     @property
     def dataset_root(self) -> Path:
@@ -211,18 +214,30 @@ class FineTuner:
             import sys, io
             model = YOLO(base_path)
 
-            def on_fit_epoch_end(trainer):
-                ep = trainer.epoch + 1
-                total = trainer.epochs
-                m = getattr(trainer, 'metrics', None) or {}
-                box = m.get('box_loss', 0) or m.get('train/box_loss', 0)
-                cls_loss = m.get('cls_loss', 0) or m.get('train/cls_loss', 0)
-                dfl = m.get('dfl_loss', 0) or m.get('train/dfl_loss', 0)
-                mp = m.get('metrics/mAP50(B)', 0)
-                mr = m.get('metrics/mAP50-95(B)', 0)
-                logger.info(f"FineTune epoch {ep}/{total} | box={float(box):.4f} cls={float(cls_loss):.4f} dfl={float(dfl):.4f} | mAP50={float(mp):.4f} mAP50-95={float(mr):.4f}")
+            current_epoch = [0]
+            current_total = [self.epochs]
+
+            def on_train_epoch_end(trainer):
+                current_epoch[0] = trainer.epoch + 1
+                current_total[0] = trainer.epochs
+
+            def on_val_end(trainer):
+                ep = current_epoch[0]
+                total = current_total[0]
+                mp, mr = 0.0, 0.0
+                try:
+                    if hasattr(trainer, 'metrics') and trainer.metrics is not None:
+                        res = trainer.metrics.mean_results()
+                        if len(res) >= 4:
+                            mp, mr = float(res[2]), float(res[3])
+                except Exception:
+                    pass
+                logger.info(f"FineTune epoch {ep}/{total} | mAP50={mp:.4f} mAP50-95={mr:.4f}")
                 if cb:
-                    cb(ep, total, float(box), float(cls_loss), float(dfl))
+                    cb(ep, total, 0, 0, 0)
+
+            model.add_callback("on_train_epoch_end", on_train_epoch_end)
+            model.add_callback("on_val_end", on_val_end)
 
             old_stdout = sys.stdout
             sys.stdout = io.StringIO()
@@ -233,12 +248,11 @@ class FineTuner:
                     imgsz=self.imgsz,
                     device=self.device,
                     workers=self.workers or 4,
-                    batch=8,
+                    batch=self.batch_size,
                     exist_ok=True,
                     project=str(self.models_dir / "runs"),
                     name="fine-tune",
                     verbose=False,
-                    callbacks={"on_fit_epoch_end": on_fit_epoch_end},
                 )
             finally:
                 captured = sys.stdout.getvalue()
@@ -286,6 +300,8 @@ class FineTuner:
         for name, name_objs in sorted(groups.items()):
             classes = list(dict.fromkeys(o.class_name for o in name_objs))
             total = await self._count_frames_for_objects(name_objs)
+            if total < self.min_show:
+                continue
             result.append({
                 "name": name,
                 "class_name": classes[0] if len(classes) == 1 else ", ".join(classes),
@@ -293,6 +309,7 @@ class FineTuner:
                 "frames": total,
                 "ready": total >= self.min_samples,
             })
+        result.sort(key=lambda x: x["frames"], reverse=True)
         return result
 
     async def _count_frames_for_objects(self, objects: list[TrackedObject]) -> int:
@@ -303,6 +320,24 @@ class FineTuner:
                 .where(FrameCapture.object_id.in_(ids))
             )
             return result.scalar() or 0
+
+    async def export_zip(self, name_filter: Optional[str] = None) -> Optional[Path]:
+        """Export YOLO dataset as ZIP file. Returns path to zip."""
+        dataset_dir = await self.collect_dataset(name_filter=name_filter)
+        if dataset_dir is None:
+            return None
+        name = name_filter or "all"
+        zip_path = dataset_dir.parent / f"dataset-{name}-{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._create_zip, dataset_dir, zip_path)
+        return zip_path
+
+    @staticmethod
+    def _create_zip(dataset_dir: Path, zip_path: Path):
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for f in dataset_dir.rglob('*'):
+                if f.is_file():
+                    zf.write(f, f.relative_to(dataset_dir.parent))
 
     @staticmethod
     def _read_crop(fc: FrameCapture) -> Optional[np.ndarray]:

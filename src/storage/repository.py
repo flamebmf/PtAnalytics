@@ -71,7 +71,8 @@ class StorageRepository:
 
             ts = self._db_timestamp(timestamp)
             if obj:
-                obj.class_name = class_name
+                if not obj.name:
+                    obj.class_name = class_name
                 obj.appearance_count = (obj.appearance_count or 0) + 1
                 if plate_number:
                     obj.plate_number = plate_number
@@ -96,6 +97,23 @@ class StorageRepository:
                     face_id=face_id,
                 )
                 session.add(obj)
+                await session.flush()
+
+                # Auto-link to named object with same face_id
+                if face_id:
+                    existing = await session.execute(
+                        select(TrackedObject).where(
+                            TrackedObject.face_id == face_id,
+                            TrackedObject.name.isnot(None),
+                            TrackedObject.name != "",
+                            TrackedObject.id != obj.id,
+                        ).limit(1)
+                    )
+                    match = existing.scalar_one_or_none()
+                    if match:
+                        obj.name = match.name
+                        logger.info(f"Auto-linked object {obj.id} to '{match.name}' by face_id")
+
                 await session.commit()
                 await session.refresh(obj)
 
@@ -440,6 +458,10 @@ class StorageRepository:
                     track_id=old_obj.track_id,
                     class_name=old_obj.class_name,
                     name=target_name,
+                    face_id=old_obj.face_id,
+                    face_hash=old_obj.face_hash,
+                    plate_number=old_obj.plate_number,
+                    embedding=old_obj.embedding,
                     first_seen=self._db_timestamp(fc.timestamp),
                     last_seen=self._db_timestamp(fc.timestamp),
                     appearance_count=1,
@@ -447,6 +469,11 @@ class StorageRepository:
                 session.add(target_obj)
                 await session.flush()
             fc.object_id = target_obj.id
+            # Copy metadata from old object if target doesn't have it
+            if old_obj.face_id and not target_obj.face_id:
+                target_obj.face_id = old_obj.face_id
+            if old_obj.plate_number and not target_obj.plate_number:
+                target_obj.plate_number = old_obj.plate_number
             fc_ts = self._db_timestamp(fc.timestamp)
             target_obj.last_seen = fc_ts
             target_obj.appearance_count = (target_obj.appearance_count or 0) + 1
@@ -459,6 +486,40 @@ class StorageRepository:
             old_obj.last_seen = self._db_timestamp(max_val) if max_val else old_obj.last_seen
             await session.commit()
             return {"frame_id": str(fc.id), "target_name": target_name, "target_object_id": str(target_obj.id)}
+
+    async def reclassify_group(self, group_name: str, new_class: str) -> dict:
+        """Change class_name for all objects with the given name."""
+        async with await get_session() as session:
+            result = await session.execute(
+                select(TrackedObject).where(TrackedObject.name == group_name)
+            )
+            objs = result.scalars().all()
+            updated = 0
+            for obj in objs:
+                if obj.class_name == new_class:
+                    continue
+                obj.class_name = new_class
+                updated += 1
+            await session.commit()
+            return {"updated": updated, "total": len(objs), "class_name": new_class, "name": group_name}
+
+    async def reclassify_by_ids(self, obj_ids: list[str], new_class: str) -> dict:
+        """Change class_name for specific object IDs."""
+        from uuid import UUID
+        uuids = [UUID(i) for i in obj_ids]
+        async with await get_session() as session:
+            result = await session.execute(
+                select(TrackedObject).where(TrackedObject.id.in_(uuids))
+            )
+            objs = result.scalars().all()
+            updated = 0
+            for obj in objs:
+                if obj.class_name == new_class:
+                    continue
+                obj.class_name = new_class
+                updated += 1
+            await session.commit()
+            return {"updated": updated, "total": len(objs), "class_name": new_class}
 
     async def get_latest_frame(self) -> Optional[dict]:
         """Return the most recently saved frame with its object info."""

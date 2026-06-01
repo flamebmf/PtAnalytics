@@ -22,7 +22,7 @@
 - **YoloDetector** — базовая yolo11m (COCO 80 классов) — работает только на кадрах с движением
 - **CropClassifier** — fine-tuned.pt (пользовательские классы) — классифицирует вырезанные объекты
 
-Детекция COCO выполняется на CPU (сервер без GPU), классификация имён на маленьких crop'ах — быстро. Дообучение производится на GPU-машине разработчика, результат (fine-tuned.pt) заливается на сервер.
+Детекция COCO и классификация имён выполняются на crop'ах. Дообучение производится отдельно, результат (fine-tuned.pt) загружается на сервер.
 
 ## Быстрый старт
 
@@ -135,7 +135,7 @@ curl http://localhost:8090/config/reload       # hot-reload
 | `scripts/test-stream.sh` | Проверка RTSP/ONVIF камер |
 | `scripts/health-check.sh` | Мониторинг здоровья |
 | `training/train.py` | Дообучение YOLO |
-| `training/train.bat` | То же для Windows |
+| `training/train.bat` | То же (Windows) |
 
 ## Структура проекта
 

@@ -499,6 +499,7 @@ async function loadObjects(offset) {
   } finally {
     document.getElementById('obj-table').classList.remove('loading');
     loading = false;
+    syncViewMode();
   }
 }
 
@@ -849,7 +850,6 @@ function applyMode() {
   const tableWrap = document.getElementById('table-wrapper');
   const imgWrap = preview.querySelector('div:first-child');
   const info = preview.querySelector('.info');
-  const pagiRow = document.querySelector('.pagination-row');
   if (mode === 'view') {
     btn.textContent = '✏';
     btn.title = 'Режим редактирования';
@@ -870,9 +870,6 @@ function applyMode() {
     tableWrap.style.width = '30%';
     tableWrap.style.height = 'calc(100vh - 56px)';
     tableWrap.style.maxHeight = 'calc(100vh - 56px)';
-    if (pagiRow) pagiRow.style.display = 'none';
-    document.querySelectorAll('#obj-table th:nth-child(2),#obj-table th:nth-child(3)').forEach(el => el.style.display = 'none');
-    document.querySelectorAll('#obj-table td:nth-child(2),#obj-table td:nth-child(3)').forEach(el => el.style.display = 'none');
   } else {
     btn.textContent = '👁';
     btn.title = 'Режим просмотра';
@@ -889,12 +886,18 @@ function applyMode() {
     tableWrap.style.width = '';
     tableWrap.style.height = '';
     tableWrap.style.maxHeight = '';
-    if (pagiRow) pagiRow.style.display = '';
-    document.querySelectorAll('#obj-table th:nth-child(2),#obj-table th:nth-child(3)').forEach(el => el.style.display = '');
-    document.querySelectorAll('#obj-table td:nth-child(2),#obj-table td:nth-child(3)').forEach(el => el.style.display = '');
   }
+  syncViewMode();
 }
 function pageSize() { return mode === 'view' ? 10 : (window._PAGE_SIZE || PAGE_SIZE); }
+
+// Apply view-mode visibility after any table render
+function syncViewMode() {
+  const pagiRow = document.querySelector('.pagination-row');
+  if (pagiRow) pagiRow.style.display = mode === 'view' ? 'none' : '';
+  document.querySelectorAll('#obj-table th:nth-child(2),#obj-table th:nth-child(3)').forEach(el => el.style.display = mode === 'view' ? 'none' : '');
+  document.querySelectorAll('#obj-table td:nth-child(2),#obj-table td:nth-child(3)').forEach(el => el.style.display = mode === 'view' ? 'none' : '');
+}
 
 // ---- Training tab ----
 function openTrainingTab() {

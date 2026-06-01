@@ -19,7 +19,7 @@ from aiohttp import web
 from loguru import logger
 from sqlalchemy import select, text
 
-from .config import load_settings, load_cameras, load_triggers
+from .config import load_settings, load_cameras, load_triggers, _write_yaml
 from .pipeline import CameraPipeline
 from .stats import StatsCollector
 from .storage import init_db, close_db, init_pgvector, init_schema, StorageRepository, get_session
@@ -430,20 +430,66 @@ async def main():
             "names": [n["name"] for n in names],
         })
 
-    async def handle_settings(request: web.Request) -> web.Response:
+    async def handle_get_config(request: web.Request) -> web.Response:
         return web.json_response({
-            "ui": settings.get("ui", {}),
-            "training": {
-                "min_samples_per_class": settings.get("training", {}).get("min_samples_per_class", 30),
-                "min_show_frames": settings.get("training", {}).get("min_show_frames", 5),
-            },
-            "detector": {
-                "confidence": settings.get("detector", {}).get("confidence", 0.6),
-                "model": settings.get("detector", {}).get("model", "yolo11m.pt"),
-            },
-            "general": {
-                "cleanup_interval_seconds": settings.get("general", {}).get("cleanup_interval_seconds", 300),
-            },
+            "settings": settings,
+            "cameras": cameras_cfg.get("cameras", []),
+        })
+
+    async def handle_put_config(request: web.Request) -> web.Response:
+        nonlocal settings, cameras_cfg
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"error": "invalid JSON"}, status=400)
+
+        new_settings = body.get("settings")
+        new_cameras = body.get("cameras")
+
+        if new_settings:
+            _write_yaml(config_dir / "settings.yaml", new_settings)
+            settings = new_settings
+        if new_cameras is not None:
+            _write_yaml(config_dir / "cameras.yaml", {"cameras": new_cameras})
+            cameras_cfg = {"cameras": new_cameras}
+
+        # Reload triggers from disk (unchanged by this endpoint)
+        new_triggers_cfg = load_triggers(config_dir)
+        dispatcher.load_triggers(new_triggers_cfg.get("triggers", []))
+
+        # Reconfigure existing pipelines
+        new_cam_map = {c["id"]: c for c in new_cameras or cameras_cfg.get("cameras", [])}
+        old_ids = {pl.cam_id for pl in pipelines}
+        new_ids = set(new_cam_map.keys())
+
+        for pl in list(pipelines):
+            if pl.cam_id not in new_ids:
+                logger.info(f"Stopping pipeline for removed camera: {pl.cam_id}")
+                pl.stop()
+                pipelines.remove(pl)
+                stats_collector._pipelines.pop(pl.cam_id, None)
+
+        for pl in pipelines:
+            if pl.cam_id in new_cam_map:
+                await pl.reconfigure(new_cam_map[pl.cam_id], settings)
+                logger.info(f"Pipeline {pl.cam_id} reconfigured")
+
+        for cam_id in new_ids - old_ids:
+            cam_cfg = new_cam_map[cam_id]
+            pipeline = CameraPipeline(
+                camera_config=cam_cfg, settings=settings,
+                repository=repository, dispatcher=dispatcher,
+            )
+            pipelines.append(pipeline)
+            stats_collector._pipelines[pipeline.cam_id] = pipeline.stats
+            asyncio.create_task(pipeline.run())
+            logger.info(f"Added pipeline for new camera: {cam_id}")
+
+        return web.json_response({
+            "status": "ok",
+            "cameras": len(pipelines),
+            "cameras_added": list(new_ids - old_ids),
+            "cameras_removed": list(old_ids - new_ids),
         })
 
     async def handle_ignore_object(request):
@@ -499,7 +545,25 @@ async def main():
     async def handle_config_reload(request: web.Request) -> web.Response:
         nonlocal settings, cameras_cfg, triggers_cfg
         logger.info("Reloading configuration...")
-        ...
+        new_settings = load_settings(config_dir)
+        new_cameras_cfg = load_cameras(config_dir)
+        new_triggers_cfg = load_triggers(config_dir)
+        dispatcher.load_triggers(new_triggers_cfg.get("triggers", []))
+        new_cam_map = {c["id"]: c for c in new_cameras_cfg.get("cameras", [])}
+        old_ids = {pl.cam_id for pl in pipelines}
+        new_ids = set(new_cam_map.keys())
+        for pl in list(pipelines):
+            if pl.cam_id not in new_ids:
+                pl.stop(); pipelines.remove(pl); stats_collector._pipelines.pop(pl.cam_id, None)
+        for pl in pipelines:
+            if pl.cam_id in new_cam_map:
+                await pl.reconfigure(new_cam_map[pl.cam_id], new_settings)
+        for cam_id in new_ids - old_ids:
+            cam_cfg = new_cam_map[cam_id]
+            pl = CameraPipeline(camera_config=cam_cfg, settings=new_settings, repository=repository, dispatcher=dispatcher)
+            pipelines.append(pl); stats_collector._pipelines[pl.cam_id] = pl.stats; asyncio.create_task(pl.run())
+        settings = new_settings; cameras_cfg = new_cameras_cfg; triggers_cfg = new_triggers_cfg
+        return web.json_response({"status": "ok", "cameras": len(pipelines), "cameras_added": list(new_ids - old_ids), "cameras_removed": list(old_ids - new_ids)})
 
     async def handle_model_reset(request: web.Request) -> web.Response:
         import os
@@ -512,53 +576,6 @@ async def main():
             await pl.reload_classifier(str(fine_tuned))
         return web.json_response({"status": "ok", "message": "Classifier disabled"})
 
-        # Update triggers
-        dispatcher.load_triggers(new_triggers_cfg.get("triggers", []))
-        logger.info("Triggers reloaded")
-
-        # Update existing pipelines with new detector/tracker settings
-        new_cam_map = {c["id"]: c for c in new_cameras_cfg.get("cameras", [])}
-        old_ids = {pl.cam_id for pl in pipelines}
-        new_ids = set(new_cam_map.keys())
-
-        # Stop removed cameras
-        for pl in list(pipelines):
-            if pl.cam_id not in new_ids:
-                logger.info(f"Stopping pipeline for removed camera: {pl.cam_id}")
-                pl.stop()
-                pipelines.remove(pl)
-                stats_collector._pipelines.pop(pl.cam_id, None)
-
-        # Update existing or reconfigure
-        for pl in pipelines:
-            if pl.cam_id in new_cam_map:
-                await pl.reconfigure(new_cam_map[pl.cam_id], new_settings)
-                logger.info(f"Pipeline {pl.cam_id} reconfigured")
-
-        # Add new cameras
-        for cam_id in new_ids - old_ids:
-            cam_cfg = new_cam_map[cam_id]
-            pipeline = CameraPipeline(
-                camera_config=cam_cfg,
-                settings=new_settings,
-                repository=repository,
-                dispatcher=dispatcher,
-            )
-            pipelines.append(pipeline)
-            stats_collector._pipelines[pipeline.cam_id] = pipeline.stats
-            asyncio.create_task(pipeline.run())
-            logger.info(f"Added pipeline for new camera: {cam_id}")
-
-        settings = new_settings
-        cameras_cfg = new_cameras_cfg
-        triggers_cfg = new_triggers_cfg
-        return web.json_response({
-            "status": "ok",
-            "cameras": len(pipelines),
-            "cameras_added": list(new_ids - old_ids),
-            "cameras_removed": list(old_ids - new_ids),
-        })
-
     health_app.router.add_get("/training/status", handle_training_status)
     health_app.router.add_get("/training/candidates", handle_training_candidates)
     health_app.router.add_get("/training/export", handle_training_export)
@@ -569,7 +586,8 @@ async def main():
     health_app.router.add_get("/objects", handle_list_objects)
     health_app.router.add_get("/objects/names", handle_list_names)
     health_app.router.add_get("/filters", handle_filters)
-    health_app.router.add_get("/settings", handle_settings)
+    health_app.router.add_get("/config", handle_get_config)
+    health_app.router.add_put("/config", handle_put_config)
     health_app.router.add_get("/objects/{id}", handle_get_object)
     health_app.router.add_patch("/objects/{id}", handle_patch_object)
     health_app.router.add_delete("/objects/{id}", handle_delete_object)

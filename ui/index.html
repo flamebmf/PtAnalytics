@@ -236,7 +236,8 @@ input::placeholder, select option { color: var(--muted) !important; }
 
         <span style="color:var(--muted);font-size:.75rem" id="obj-count">—</span>
 
-        <button class="btn-neon py-0" onclick="reloadConfig()" title="Перечитать конфигурацию">↻ Config</button>
+        <button class="btn-neon py-0" onclick="reloadConfig()" title="Перечитать конфигурацию">↻</button>
+        <button class="btn-muted py-0" onclick="openSettings()" title="Настройки системы">⚙</button>
         <button class="btn-neon-fill py-0" onclick="openTraining()">Дообучение</button>
         <button class="btn-muted py-0" id="btn-pause" onclick="togglePause()" title="Пауза автообновления">⏸</button>
         <button class="btn-muted py-0" onclick="location.reload()">Обновить</button>
@@ -360,6 +361,33 @@ input::placeholder, select option { color: var(--muted) !important; }
           <thead><tr><th>Имя</th><th>Класс</th><th>Объектов</th><th>Кадров</th><th>Готов</th><th></th><th></th></tr></thead>
           <tbody id="train-tbody"><tr><td colspan="7" class="text-center" style="color:var(--muted)">загрузка…</td></tr></tbody>
         </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="modal fade" id="settingsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="mb-0">Настройки системы</h6>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="font-size:.75rem">
+        <ul class="nav nav-tabs nav-fill mb-3" style="border-color:rgba(255,255,255,.08)" id="settings-tabs">
+          <li class="nav-item"><a class="nav-link active" data-tab="cameras" style="font-size:.75rem;color:var(--text);padding:4px 8px">Камеры</a></li>
+          <li class="nav-item"><a class="nav-link" data-tab="detector" style="font-size:.75rem;color:var(--text);padding:4px 8px">Детекция</a></li>
+          <li class="nav-item"><a class="nav-link" data-tab="motion" style="font-size:.75rem;color:var(--text);padding:4px 8px">Motion</a></li>
+          <li class="nav-item"><a class="nav-link" data-tab="recognition" style="font-size:.75rem;color:var(--text);padding:4px 8px">Распознавание</a></li>
+          <li class="nav-item"><a class="nav-link" data-tab="system" style="font-size:.75rem;color:var(--text);padding:4px 8px">Система</a></li>
+        </ul>
+        <div id="settings-content"></div>
+      </div>
+      <div class="modal-footer">
+        <span id="settings-status" style="color:var(--accent);font-size:.7rem"></span>
+        <button class="btn-muted btn-xs" data-bs-dismiss="modal">Отмена</button>
+        <button class="btn-neon-fill btn-xs" onclick="saveSettings()">Сохранить</button>
       </div>
     </div>
   </div>
@@ -941,8 +969,260 @@ async function reloadConfig() {
     btn.className = 'btn btn-xs btn-outline-danger';
     btn.textContent = '✗ Error';
   }
-  setTimeout(() => { btn.className = 'btn-neon'; btn.textContent = '↻ Config'; btn.disabled = false; }, 2000);
+  setTimeout(() => { btn.className = 'btn-neon'; btn.textContent = '↻'; btn.disabled = false; }, 2000);
 }
+
+// ---- Settings modal ----
+let settingsModal;
+function openSettings() {
+  if (!settingsModal) settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'));
+  document.getElementById('settings-status').textContent = '';
+  settingsModal.show();
+  loadSettingsForm();
+}
+
+async function loadSettingsForm() {
+  try {
+    const r = await fetch('/config');
+    const d = await r.json();
+    window._settingsData = d;
+    renderSettingsTabs(d);
+  } catch { document.getElementById('settings-content').innerHTML = '<span style="color:var(--danger)">Ошибка загрузки</span>'; }
+}
+
+function renderSettingsTabs(data) {
+  const tab = document.querySelector('#settings-tabs .nav-link.active');
+  const active = tab ? tab.dataset.tab : 'cameras';
+  showSettingsTab(active);
+}
+
+function showSettingsTab(tab) {
+  const data = window._settingsData;
+  if (!data) return;
+  document.querySelectorAll('#settings-tabs .nav-link').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === tab);
+    t.style.borderColor = t.dataset.tab === tab ? 'var(--accent)' : 'transparent';
+    t.style.color = t.dataset.tab === tab ? 'var(--accent)' : 'var(--text)';
+  });
+  const el = document.getElementById('settings-content');
+  if (tab === 'cameras') el.innerHTML = renderCamerasTab(data);
+  else if (tab === 'detector') el.innerHTML = renderDetectorTab(data);
+  else if (tab === 'motion') el.innerHTML = renderMotionTab(data);
+  else if (tab === 'recognition') el.innerHTML = renderRecognitionTab(data);
+  else if (tab === 'system') el.innerHTML = renderSystemTab(data);
+}
+
+function renderCamerasTab(data) {
+  const cams = data.cameras || [];
+  return cams.map((c, i) => `
+    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6)">
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <strong style="width:100px">${escapeHtml(c.name || c.id)}</strong>
+        <label style="font-size:.7rem"><input type="checkbox" data-cam="${i}" data-key="enabled" ${c.enabled ? 'checked' : ''}> вкл</label>
+        <label style="font-size:.7rem"><input type="checkbox" data-cam="${i}" data-key="motion_enabled" ${c.motion_enabled !== false ? 'checked' : ''}> motion</label>
+      </div>
+      <div class="d-flex flex-wrap gap-2" style="font-size:.7rem">
+        <span>FPS <input type="number" data-cam="${i}" data-key="fps" value="${c.fps || 10}" style="width:50px;background:rgba(4,7,13,.8);border:1px solid rgba(255,255,255,.08);border-radius:4px;color:var(--text);padding:1px 4px"></span>
+        <span>imgsz <input type="number" data-cam="${i}" data-key="imgsz" value="${(c.detector||{}).imgsz || 640}" style="width:55px;background:rgba(4,7,13,.8);border:1px solid rgba(255,255,255,.08);border-radius:4px;color:var(--text);padding:1px 4px"></span>
+        <span>motion_thr <input type="text" data-cam="${i}" data-key="motion_threshold" value="${c.motion_threshold || 0.005}" style="width:60px;background:rgba(4,7,13,.8);border:1px solid rgba(255,255,255,.08);border-radius:4px;color:var(--text);padding:1px 4px"></span>
+        <span>RTSP <input type="text" data-cam="${i}" data-key="rtsp_url" value="${escapeHtml(c.rtsp_url || '')}" style="width:250px;background:rgba(4,7,13,.8);border:1px solid rgba(255,255,255,.08);border-radius:4px;color:var(--text);padding:1px 4px;font-size:.65rem"></span>
+      </div>
+    </div>`).join('') || '<span style="color:var(--muted)">Нет камер</span>';
+}
+
+function renderDetectorTab(data) {
+  const s = data.settings || {};
+  const d = s.detector || {};
+  return `
+    <div class="row g-2" style="font-size:.75rem">
+      <div class="col-4"><label>model <input type="text" id="cfg-det-model" value="${escapeHtml(d.model || 'yolo11m.pt')}" class="form-control form-control-sm"></label></div>
+      <div class="col-4"><label>confidence <input type="text" id="cfg-det-confidence" value="${d.confidence || 0.35}" class="form-control form-control-sm"></label></div>
+      <div class="col-4"><label>iou <input type="text" id="cfg-det-iou" value="${d.iou || 0.45}" class="form-control form-control-sm"></label></div>
+      <div class="col-4"><label>imgsz <input type="number" id="cfg-det-imgsz" value="${d.imgsz || 640}" class="form-control form-control-sm"></label></div>
+      <div class="col-4"><label>min_bbox_size <input type="number" id="cfg-det-min-bbox" value="${d.min_bbox_size || 40}" class="form-control form-control-sm"></label></div>
+      <div class="col-4"><label>workers <input type="number" id="cfg-det-workers" value="${d.workers || 4}" class="form-control form-control-sm"></label></div>
+      <div class="col-4"><label>backend <select id="cfg-det-backend" class="form-select form-select-sm"><option ${d.backend==='torch'?'selected':''}>torch</option><option ${d.backend==='openvino'?'selected':''}>openvino</option></select></label></div>
+      <div class="col-4"><label>device <input type="text" id="cfg-det-device" value="${d.device || 'cpu'}" class="form-control form-control-sm"></label></div>
+    </div>
+    <hr style="border-color:rgba(255,255,255,.08)">
+    <div style="font-size:.75rem"><strong>Tracker</strong></div>
+    <div class="row g-2" style="font-size:.75rem">
+      ${renderTrackerFields(s.tracker || {})}
+    </div>`;
+}
+
+function renderTrackerFields(t) {
+  return `
+    <div class="col-3"><label>max_age <input type="number" id="cfg-trk-max-age" value="${t.max_age || 30}" class="form-control form-control-sm"></label></div>
+    <div class="col-3"><label>n_init <input type="number" id="cfg-trk-n-init" value="${t.n_init || 3}" class="form-control form-control-sm"></label></div>
+    <div class="col-3"><label>depart_timeout <input type="text" id="cfg-trk-depart" value="${t.depart_timeout || 10}" class="form-control form-control-sm"></label></div>
+    <div class="col-3"><label>buf_size <input type="number" id="cfg-trk-buf" value="${t.frame_buffer_size || 30}" class="form-control form-control-sm"></label></div>`;
+}
+
+function renderMotionTab(data) {
+  const s = data.settings || {};
+  const m = s.motion || {};
+  return `
+    <div class="row g-2" style="font-size:.75rem">
+      <div class="col-4"><label>threshold <input type="text" id="cfg-mot-threshold" value="${m.threshold || 0.005}" class="form-control form-control-sm"></label></div>
+      <div class="col-4"><label>skip_seconds <input type="text" id="cfg-mot-skip" value="${m.skip_seconds || 0}" class="form-control form-control-sm"></label></div>
+      <div class="col-4"><label>method <select id="cfg-mot-method" class="form-select form-select-sm"><option ${m.method==='mog2'?'selected':''}>mog2</option><option ${m.method==='absdiff'?'selected':''}>absdiff</option><option ${m.method==='none'?'selected':''}>none</option></select></label></div>
+      <div class="col-4"><label>resize <input type="text" id="cfg-mot-resize" value="${(m.resize_to||[640,360]).join(',')}" class="form-control form-control-sm" placeholder="w,h"></label></div>
+    </div>`;
+}
+
+function renderRecognitionTab(data) {
+  const s = data.settings || {};
+  const lpr = s.lpr || {};
+  const face = s.face || {};
+  const vmr = s.vmr || {};
+  return `
+    <div style="font-size:.75rem"><strong>LPR (номера)</strong></div>
+    <div class="row g-2 mb-3" style="font-size:.75rem">
+      <div class="col-3"><label><input type="checkbox" id="cfg-lpr-enabled" ${lpr.enabled!==false?'checked':''}> вкл</label></div>
+      <div class="col-4"><label>min_confidence <input type="text" id="cfg-lpr-conf" value="${lpr.min_confidence || 0.6}" class="form-control form-control-sm"></label></div>
+    </div>
+    <div style="font-size:.75rem"><strong>Face</strong></div>
+    <div class="row g-2 mb-3" style="font-size:.75rem">
+      <div class="col-3"><label><input type="checkbox" id="cfg-face-enabled" ${face.enabled!==false?'checked':''}> вкл</label></div>
+      <div class="col-4"><label>min_confidence <input type="text" id="cfg-face-conf" value="${face.min_confidence || 0.5}" class="form-control form-control-sm"></label></div>
+      <div class="col-4"><label>search_threshold <input type="text" id="cfg-face-thr" value="${face.search_threshold || 0.6}" class="form-control form-control-sm"></label></div>
+    </div>
+    <div style="font-size:.75rem"><strong>VMR (марка машины)</strong></div>
+    <div class="row g-2" style="font-size:.75rem">
+      <div class="col-3"><label><input type="checkbox" id="cfg-vmr-enabled" ${vmr.enabled!==false?'checked':''}> вкл</label></div>
+      <div class="col-4"><label>min_confidence <input type="text" id="cfg-vmr-conf" value="${vmr.min_confidence || 0.3}" class="form-control form-control-sm"></label></div>
+    </div>`;
+}
+
+function renderSystemTab(data) {
+  const s = data.settings || {};
+  const g = s.general || {};
+  const t = s.training || {};
+  const u = s.ui || {};
+  return `
+    <div style="font-size:.75rem"><strong>Общие</strong></div>
+    <div class="row g-2 mb-3" style="font-size:.75rem">
+      <div class="col-4"><label>cleanup_interval <input type="number" id="cfg-gen-cleanup" value="${g.cleanup_interval_seconds || 300}" class="form-control form-control-sm"></label></div>
+      <div class="col-4"><label>stats_log_interval <input type="number" id="cfg-gen-stats" value="${g.stats_log_interval_seconds || 30}" class="form-control form-control-sm"></label></div>
+    </div>
+    <div style="font-size:.75rem"><strong>Обучение</strong></div>
+    <div class="row g-2 mb-3" style="font-size:.75rem">
+      <div class="col-3"><label>min_samples <input type="number" id="cfg-trn-min-samples" value="${t.min_samples_per_class || 30}" class="form-control form-control-sm"></label></div>
+      <div class="col-3"><label>epochs <input type="number" id="cfg-trn-epochs" value="${t.epochs || 30}" class="form-control form-control-sm"></label></div>
+      <div class="col-3"><label>batch_size <input type="number" id="cfg-trn-batch" value="${t.batch_size || 8}" class="form-control form-control-sm"></label></div>
+      <div class="col-3"><label>imgsz <input type="number" id="cfg-trn-imgsz" value="${t.imgsz || 1280}" class="form-control form-control-sm"></label></div>
+    </div>
+    <div style="font-size:.75rem"><strong>UI</strong></div>
+    <div class="row g-2" style="font-size:.75rem">
+      <div class="col-4"><label>page_size <input type="number" id="cfg-ui-page" value="${u.page_size || 23}" class="form-control form-control-sm"></label></div>
+      <div class="col-4"><label>auto_refresh <input type="number" id="cfg-ui-refresh" value="${u.auto_refresh_seconds || 30}" class="form-control form-control-sm"></label></div>
+    </div>`;
+}
+
+function collectSettingsForm() {
+  const data = window._settingsData;
+  if (!data) return null;
+  const settings = JSON.parse(JSON.stringify(data.settings || {}));
+  const cameras = JSON.parse(JSON.stringify(data.cameras || []));
+
+  // Detector
+  const det = settings.detector || {};
+  det.model = document.getElementById('cfg-det-model')?.value || det.model;
+  det.confidence = parseFloat(document.getElementById('cfg-det-confidence')?.value) || det.confidence;
+  det.iou = parseFloat(document.getElementById('cfg-det-iou')?.value) || det.iou;
+  det.imgsz = parseInt(document.getElementById('cfg-det-imgsz')?.value) || det.imgsz;
+  det.min_bbox_size = parseInt(document.getElementById('cfg-det-min-bbox')?.value) || det.min_bbox_size;
+  det.workers = parseInt(document.getElementById('cfg-det-workers')?.value) || det.workers;
+  det.backend = document.getElementById('cfg-det-backend')?.value || det.backend;
+  det.device = document.getElementById('cfg-det-device')?.value || det.device;
+  settings.detector = det;
+
+  // Tracker
+  const trk = settings.tracker || {};
+  trk.max_age = parseInt(document.getElementById('cfg-trk-max-age')?.value) || trk.max_age;
+  trk.n_init = parseInt(document.getElementById('cfg-trk-n-init')?.value) || trk.n_init;
+  trk.depart_timeout = parseFloat(document.getElementById('cfg-trk-depart')?.value) || trk.depart_timeout;
+  trk.frame_buffer_size = parseInt(document.getElementById('cfg-trk-buf')?.value) || trk.frame_buffer_size;
+  settings.tracker = trk;
+
+  // Motion
+  const mot = settings.motion || {};
+  mot.threshold = parseFloat(document.getElementById('cfg-mot-threshold')?.value) || mot.threshold;
+  mot.skip_seconds = parseFloat(document.getElementById('cfg-mot-skip')?.value) || mot.skip_seconds;
+  mot.method = document.getElementById('cfg-mot-method')?.value || mot.method;
+  const resize = document.getElementById('cfg-mot-resize')?.value;
+  if (resize) mot.resize_to = resize.split(',').map(Number);
+  settings.motion = mot;
+
+  // Recognition
+  if (settings.lpr) settings.lpr.enabled = document.getElementById('cfg-lpr-enabled')?.checked ?? settings.lpr.enabled;
+  if (settings.lpr) settings.lpr.min_confidence = parseFloat(document.getElementById('cfg-lpr-conf')?.value) || settings.lpr.min_confidence;
+  if (settings.face) settings.face.enabled = document.getElementById('cfg-face-enabled')?.checked ?? settings.face.enabled;
+  if (settings.face) settings.face.min_confidence = parseFloat(document.getElementById('cfg-face-conf')?.value) || settings.face.min_confidence;
+  if (settings.face) settings.face.search_threshold = parseFloat(document.getElementById('cfg-face-thr')?.value) || settings.face.search_threshold;
+  if (settings.vmr) settings.vmr.enabled = document.getElementById('cfg-vmr-enabled')?.checked ?? settings.vmr.enabled;
+  if (settings.vmr) settings.vmr.min_confidence = parseFloat(document.getElementById('cfg-vmr-conf')?.value) || settings.vmr.min_confidence;
+
+  // System
+  if (settings.general) settings.general.cleanup_interval_seconds = parseInt(document.getElementById('cfg-gen-cleanup')?.value) || settings.general.cleanup_interval_seconds;
+  if (settings.general) settings.general.stats_log_interval_seconds = parseInt(document.getElementById('cfg-gen-stats')?.value) || settings.general.stats_log_interval_seconds;
+  if (settings.training) settings.training.min_samples_per_class = parseInt(document.getElementById('cfg-trn-min-samples')?.value) || settings.training.min_samples_per_class;
+  if (settings.training) settings.training.epochs = parseInt(document.getElementById('cfg-trn-epochs')?.value) || settings.training.epochs;
+  if (settings.training) settings.training.batch_size = parseInt(document.getElementById('cfg-trn-batch')?.value) || settings.training.batch_size;
+  if (settings.training) settings.training.imgsz = parseInt(document.getElementById('cfg-trn-imgsz')?.value) || settings.training.imgsz;
+  if (settings.ui) settings.ui.page_size = parseInt(document.getElementById('cfg-ui-page')?.value) || settings.ui.page_size;
+  if (settings.ui) settings.ui.auto_refresh_seconds = parseInt(document.getElementById('cfg-ui-refresh')?.value) || settings.ui.auto_refresh_seconds;
+
+  // Cameras
+  cameras.forEach((c, i) => {
+    const enabled = document.querySelector(`input[data-cam="${i}"][data-key="enabled"]`);
+    if (enabled) c.enabled = enabled.checked;
+    const motion = document.querySelector(`input[data-cam="${i}"][data-key="motion_enabled"]`);
+    if (motion) c.motion_enabled = motion.checked;
+    const fps = document.querySelector(`input[data-cam="${i}"][data-key="fps"]`);
+    if (fps) c.fps = parseInt(fps.value) || c.fps;
+    const imgsz = document.querySelector(`input[data-cam="${i}"][data-key="imgsz"]`);
+    if (imgsz) { if (!c.detector) c.detector = {}; c.detector.imgsz = parseInt(imgsz.value) || 640; }
+    const thr = document.querySelector(`input[data-cam="${i}"][data-key="motion_threshold"]`);
+    if (thr) c.motion_threshold = parseFloat(thr.value) || c.motion_threshold;
+    const url = document.querySelector(`input[data-cam="${i}"][data-key="rtsp_url"]`);
+    if (url) c.rtsp_url = url.value;
+  });
+
+  return { settings, cameras };
+}
+
+async function saveSettings() {
+  const body = collectSettingsForm();
+  if (!body) return;
+  const btn = document.querySelector('#settingsModal .btn-neon-fill');
+  btn.disabled = true; btn.textContent = '…';
+  document.getElementById('settings-status').textContent = '';
+  try {
+    const r = await fetch('/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      document.getElementById('settings-status').textContent = '✓ Сохранено';
+      loadFilterOptions();
+    } else {
+      document.getElementById('settings-status').textContent = '✗ Ошибка';
+    }
+  } catch {
+    document.getElementById('settings-status').textContent = '✗ Ошибка соединения';
+  }
+  btn.disabled = false; btn.textContent = 'Сохранить';
+}
+
+// Tab switching
+document.addEventListener('click', function(e) {
+  const link = e.target.closest('#settings-tabs .nav-link');
+  if (link) showSettingsTab(link.dataset.tab);
+});
 
 // ---- Auto-refresh ----
 function startAutoRefresh() {

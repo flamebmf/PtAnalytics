@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: GPL-3.0-only
 """Clean up frames with bbox smaller than min_bbox_size (w < 40 or h < 40)."""
 import asyncio
 import sys

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: GPL-3.0-only
 #!/usr/bin/env python3
 """
 export-dataset.py — Export collected crops to YOLO-ready dataset.

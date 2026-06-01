@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: GPL-3.0-only
 """Recalculate first_seen/last_seen from actual frame timestamps for all objects."""
 import asyncio
 import sys

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: GPL-3.0-only
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context

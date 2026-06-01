@@ -842,6 +842,7 @@ function toggleMode() {
   applyMode();
   loadObjects(0);
 }
+const _viewH = 'calc(100vh - 68px)';
 function applyMode() {
   const btn = document.getElementById('btn-mode');
   const preview = document.getElementById('live-preview');
@@ -850,6 +851,7 @@ function applyMode() {
   const tableWrap = document.getElementById('table-wrapper');
   const imgWrap = preview.querySelector('div:first-child');
   const info = preview.querySelector('.info');
+  const container = document.querySelector('.container-fluid');
   if (mode === 'view') {
     btn.textContent = '✏';
     btn.title = 'Режим редактирования';
@@ -859,7 +861,7 @@ function applyMode() {
     mainCol.style.gap = '0';
     detailCol.style.display = 'none';
     preview.style.width = '70%';
-    preview.style.height = 'calc(100vh - 56px)';
+    preview.style.height = _viewH;
     preview.style.margin = '0';
     preview.style.borderRadius = '0';
     if (imgWrap) {
@@ -868,8 +870,11 @@ function applyMode() {
     }
     if (info) info.style.display = 'none';
     tableWrap.style.width = '30%';
-    tableWrap.style.height = 'calc(100vh - 56px)';
-    tableWrap.style.maxHeight = 'calc(100vh - 56px)';
+    tableWrap.style.height = _viewH;
+    tableWrap.style.maxHeight = _viewH;
+    tableWrap.style.overflowY = 'auto';
+    const tbl = document.getElementById('obj-table');
+    if (tbl) { tbl.style.tableLayout = 'fixed'; tbl.style.width = '100%'; }
   } else {
     btn.textContent = '👁';
     btn.title = 'Режим просмотра';
@@ -886,6 +891,9 @@ function applyMode() {
     tableWrap.style.width = '';
     tableWrap.style.height = '';
     tableWrap.style.maxHeight = '';
+    tableWrap.style.overflowY = '';
+    const tbl = document.getElementById('obj-table');
+    if (tbl) { tbl.style.tableLayout = ''; tbl.style.width = ''; }
   }
   syncViewMode();
 }

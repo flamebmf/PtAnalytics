@@ -38,5 +38,5 @@ class WebhookAction(BaseAction):
                     logger.debug(f"Webhook {self.url} response: {status}")
                     return {"url": self.url, "status": status, "body": body[:500]}
         except Exception as e:
-            logger.error(f"Webhook {self.url} failed: {e}")
+            logger.warning(f"Webhook {self.url} failed: {e}")
             return {"url": self.url, "error": str(e)}

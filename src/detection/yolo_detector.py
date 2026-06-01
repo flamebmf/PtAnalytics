@@ -33,6 +33,7 @@ class YoloDetector:
         self.imgsz = imgsz
         self.backend = backend
         self.min_bbox_size = min_bbox_size
+        self.model_path = model_path
 
         local_path = self._find_model(model_path)
         self.model = self._load_model(local_path)

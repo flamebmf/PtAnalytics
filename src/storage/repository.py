@@ -51,6 +51,7 @@ class StorageRepository:
         plate_number: Optional[str] = None,
         face_hash: Optional[str] = None,
         face_id: Optional[str] = None,
+        vmr_brand: Optional[str] = None,
     ) -> TrackedObject:
         async with await get_session() as session:
             result = await session.execute(
@@ -74,9 +75,18 @@ class StorageRepository:
                     obj.face_id = face_id
                 if embedding is not None:
                     obj.embedding = embedding
+                if vmr_brand:
+                    if obj.metadata_:
+                        obj.metadata_["vmr"] = vmr_brand
+                    else:
+                        obj.metadata_ = {"vmr": vmr_brand}
                 await session.commit()
                 await session.refresh(obj)
             else:
+                if vmr_brand:
+                    metadata = {"vmr": vmr_brand}
+                else:
+                    metadata = None
                 obj = TrackedObject(
                     camera_id=camera_id,
                     track_id=track_id,
@@ -87,6 +97,7 @@ class StorageRepository:
                     plate_number=plate_number,
                     face_hash=face_hash,
                     face_id=face_id,
+                    metadata_=metadata,
                 )
                 session.add(obj)
                 await session.flush()
@@ -386,7 +397,7 @@ class StorageRepository:
                     TrackedObject.class_name == new_class,
                 )
             )
-            target_obj = target.scalar_one_or_none()
+            target_obj = target.scalars().first()
             if target_obj is None:
                 target_obj = TrackedObject(
                     camera_id=old_obj.camera_id,
@@ -535,6 +546,9 @@ class StorageRepository:
                 "name": obj.name,
                 "confidence": fc.confidence,
                 "timestamp": fc.timestamp.isoformat() if fc.timestamp else None,
+                "face_id": obj.face_id,
+                "plate_number": obj.plate_number,
+                "vmr_brand": (obj.metadata_ or {}).get("vmr_brand"),
             }
 
     async def list_objects(

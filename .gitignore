@@ -9,20 +9,23 @@ job.md
 *.md.bak
 
 # Data
-data/frames/*.jpg
-data/frames/*.png
+data/
 
 # Models
 *.pt
 models/*.onnx
 
-# Training artifacts (keep fine-tuned.pt)
+# Training artifacts
 training/extracted/
 training/models/
 training/dataset-*.zip
 training/yolo*.pt
 training/fine-tuned-*.pt
 training/.train-state.json
+
+# Local config overrides (keep .example files tracked)
+config/*.yaml
+!config/*.yaml.example
 
 # IDE
 .idea/
@@ -40,3 +43,10 @@ Thumbs.db
 # Backup
 *.bak
 *.backup
+
+# Docker local overrides
+docker-compose.override.yml
+
+# Runtime
+*.pid
+*.sock

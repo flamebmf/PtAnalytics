@@ -1,9 +1,12 @@
 import hashlib
+import warnings
 from typing import Optional
 
 import cv2
 import numpy as np
 from loguru import logger
+
+warnings.filterwarnings("ignore", message=".*estimate.*deprecated.*SimilarityTransform", category=FutureWarning)
 
 
 class FaceRecognizer:

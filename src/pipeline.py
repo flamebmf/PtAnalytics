@@ -405,13 +405,10 @@ class CameraPipeline:
                 plate_number=plate_number,
                 face_hash=face_hash,
                 face_id=face_id,
+                vmr_brand=vmr_result.get("brand") if vmr_result else None,
             )
             self.stats.objects_stored += 1
             self._last_obj_by_track[track_id] = obj
-            if vmr_result and obj and not obj.metadata_:
-                obj.metadata_ = {"vmr": vmr_result.get("brand")}
-            elif vmr_result and obj and obj.metadata_:
-                obj.metadata_["vmr"] = vmr_result.get("brand")
         except Exception as e:
             logger.error(f"DB error saving object: {e}")
             self.stats.db_errors += 1
@@ -608,25 +605,66 @@ class CameraPipeline:
         logger.info(f"[{self.cam_name}] Use reload_classifier instead for fine-tuned.pt")
 
     async def reconfigure(self, camera_config: dict, settings: dict):
-        """Update detector, tracker, motion settings from new config without restarting."""
+        """Apply all settings from new config to running pipeline without restart."""
+        # -- Detector --
         det_cfg = settings.get("detector", {})
         cam_det = camera_config.get("detector", {})
-        self.detector.confidence = cam_det.get("confidence", det_cfg.get("confidence", 0.6))
-        self.detector.iou = cam_det.get("iou", det_cfg.get("iou", 0.45))
-        self.detector.classes = cam_det.get("classes", det_cfg.get("classes"))
-        self.detector.imgsz = cam_det.get("imgsz", det_cfg.get("imgsz", 1280))
-        self.detector.min_bbox_size = cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40))
+        new_backend = cam_det.get("backend", det_cfg.get("backend", "torch"))
+        new_device = cam_det.get("device", det_cfg.get("device", "cpu"))
+        new_model = det_cfg.get("model", "yolo11n.pt")
+        if new_backend != self.detector.backend or new_device != self.detector.device or new_model != getattr(self.detector, 'model_path', ''):
+            logger.info(f"[{self.cam_name}] Recreating detector: model={new_model} backend={new_backend} device={new_device}")
+            self.detector = YoloDetector(
+                model_path=new_model,
+                device=new_device,
+                confidence=cam_det.get("confidence", det_cfg.get("confidence", 0.6)),
+                iou=cam_det.get("iou", det_cfg.get("iou", 0.45)),
+                classes=cam_det.get("classes", det_cfg.get("classes")),
+                imgsz=cam_det.get("imgsz", det_cfg.get("imgsz", 1280)),
+                workers=cam_det.get("workers", det_cfg.get("workers")),
+                backend=new_backend,
+                min_bbox_size=cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40)),
+            )
+        else:
+            self.detector.confidence = cam_det.get("confidence", det_cfg.get("confidence", 0.6))
+            self.detector.iou = cam_det.get("iou", det_cfg.get("iou", 0.45))
+            self.detector.classes = cam_det.get("classes", det_cfg.get("classes"))
+            self.detector.imgsz = cam_det.get("imgsz", det_cfg.get("imgsz", 1280))
+            self.detector.min_bbox_size = cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40))
 
+        # -- Motion --
         mot_cfg = settings.get("motion", {})
         self.motion_skip = camera_config.get("motion_skip_seconds", mot_cfg.get("skip_seconds", 1.0))
         self.motion_enabled = camera_config.get("motion_enabled", mot_cfg.get("enabled", True))
         fps = camera_config.get("fps", settings.get("app", {}).get("fps", 10))
         self._frame_interval = 1.0 / max(fps, 1) if fps > 0 else None
 
+        # -- Tracker --
         trk_cfg = settings.get("tracker", {})
         self.tracker.max_age = trk_cfg.get("max_age", 30)
         self.tracker.n_init = trk_cfg.get("n_init", 3)
         self.track_depart_timeout = trk_cfg.get("depart_timeout", 3.0)
 
+        # -- LPR --
+        lpr_cfg = settings.get("lpr", {})
+        self.lpr.enabled = lpr_cfg.get("enabled", True)
+        self.lpr.min_confidence = lpr_cfg.get("min_confidence", 0.6)
+
+        # -- Face --
+        face_cfg = settings.get("face", {})
+        self.face_recognizer.enabled = face_cfg.get("enabled", True)
+        self.face_recognizer.min_confidence = face_cfg.get("min_confidence", 0.5)
+        self.face_recognizer.search_threshold = face_cfg.get("search_threshold", 0.6)
+
+        # -- VMR --
+        vmr_cfg = settings.get("vmr", {})
+        self.vmr.enabled = vmr_cfg.get("enabled", True)
+        self.vmr.min_confidence = vmr_cfg.get("min_confidence", 0.3)
+
+        # -- Crop dataset --
+        ds_cfg = settings.get("dataset", {})
+        self.crop_enabled = ds_cfg.get("crop_enabled", True)
+
         logger.info(f"[{self.cam_name}] Reconfigured: conf={self.detector.confidence} "
-                    f"fps={fps} imgsz={self.detector.imgsz}")
+                    f"fps={fps} imgsz={self.detector.imgsz} backend={self.detector.backend} "
+                    f"lpr={self.lpr.enabled} face={self.face_recognizer.enabled} vmr={self.vmr.enabled}")

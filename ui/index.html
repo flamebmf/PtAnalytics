@@ -45,8 +45,11 @@ body {
   font-size: 1.1rem; font-weight: 900;
 }
 .logo-svg {
-  width: 41px; height: auto;
-  filter: drop-shadow(0 0 12px rgba(0,212,255,.4));
+  width: 28px; height: auto;
+  filter: drop-shadow(0 0 8px rgba(0,212,255,.4));
+}
+.nav-btn {
+  font-size: .9rem !important; padding: 5px 14px !important;
 }
 /* Buttons */
 .btn-neon {
@@ -97,9 +100,21 @@ input[list]:focus { border-color: var(--accent); }
 .live-preview .info { font-size: .9rem; line-height: 1.5; flex: 1; }
 .live-preview .info .name { font-size: 1.1rem; }
 /* Table */
-.table-cam {
+.main-table-col {
+  flex-grow: 1; display: flex; flex-direction: column;
   background: var(--card-bg); border: 1px solid var(--card-border);
   border-radius: 10px; overflow: hidden;
+}
+.table-card-filters {
+  padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,.06);
+  flex-shrink: 0;
+}
+.table-card-pagi {
+  padding: 6px 12px; border-top: 1px solid rgba(255,255,255,.06);
+  flex-shrink: 0;
+}
+.table-cam {
+  min-height: 0;
 }
 .table-cam table { margin-bottom: 0; background: transparent; }
 .table-cam thead th {
@@ -156,7 +171,7 @@ input[list]:focus { border-color: var(--accent); }
 .page-link { background: rgba(4,7,13,.8); border: 1px solid rgba(255,255,255,.06); color: var(--muted); font-size: .75rem; padding: 3px 10px; }
 .page-link:hover { background: rgba(0,212,255,.1); color: var(--accent); }
 .page-item.active .page-link { background: var(--accent); border-color: var(--accent); color: var(--bg); }
-.page-item.disabled .page-link { background: transparent; color: rgba(255,255,255,.1); }
+.page-item.disabled .page-link { background: transparent; border-color: transparent; color: rgba(255,255,255,.35); }
 /* Modal dark */
 .modal-content { background: var(--card-bg); border: 1px solid var(--card-border); }
 .modal-header { border-bottom: 1px solid rgba(255,255,255,.06); }
@@ -199,6 +214,20 @@ input::placeholder, select option { color: var(--muted) !important; }
   .frame-card img { height: auto; max-height: 120px; object-fit: contain; background: #000; }
   .detail-scroll { max-height: none; }
 }
+/* View info card (above table in view mode) */
+.view-info-card {
+  padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,.06);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.view-info-card .vi-row1 { font-size: .85rem; font-weight: 600; color: var(--accent); }
+.view-info-card .vi-row1 #vi-name { color: var(--text); }
+.view-info-card .vi-row2 { font-size: .75rem; color: var(--muted); }
+/* Edit mode preview — generous */
+.mode-edit .live-preview { max-height: 40vh; overflow: hidden; }
+.mode-edit .live-preview > div:first-child { width: 45% !important; }
+.mode-edit .live-preview img { max-height: 35vh; }
+.mode-edit .live-preview .info { font-size: .9rem; line-height: 1.5; }
+.mode-edit .live-preview .info > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>
 </head>
 <body>
@@ -209,40 +238,24 @@ input::placeholder, select option { color: var(--muted) !important; }
   <div class="container-fluid">
     <div class="d-flex align-items-center flex-wrap">
       <a class="navbar-brand-cam me-auto" href="/" style="gap:10px">
-        <svg class="logo-svg" viewBox="0 0 155 205" xmlns="http://www.w3.org/2000/svg">
-          <rect x="7" y="7" width="141" height="191" rx="15" ry="15" fill="none" stroke="url(#gh)" stroke-width="4"/>
-          <text x="50%" y="50%" text-anchor="middle" fill="url(#gh)" font-size="140" font-weight="900" dy=".3em">P</text>
-          <text x="65%" y="70%" text-anchor="middle" fill="#7b61ff" font-size="75" font-weight="bold" dy=".3em">t</text>
+        <svg class="logo-svg" viewBox="0 0 120 168" xmlns="http://www.w3.org/2000/svg">
+          <rect x="6" y="6" width="108" height="156" rx="12" ry="12" fill="none" stroke="url(#gh)" stroke-width="3"/>
+          <text x="50%" y="50%" text-anchor="middle" fill="url(#gh)" font-size="110" font-weight="900" dy=".3em">P</text>
+          <text x="65%" y="70%" text-anchor="middle" fill="#7b61ff" font-size="60" font-weight="bold" dy=".3em">t</text>
           <defs><linearGradient id="gh" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#00d4ff"/><stop offset="100%" stop-color="#7b61ff"/></linearGradient></defs>
         </svg>
-        <span class="grad">Analytics</span>
+        <span class="grad" style="font-size:1rem">Analytics</span>
       </a>
 
       <button class="btn-muted d-md-none me-2" type="button" onclick="document.getElementById('nav-collapse').classList.toggle('show')" style="font-size:1rem;padding:2px 8px">☰</button>
 
-      <div class="d-none d-md-flex align-items-center gap-2 flex-wrap flex-grow-1" id="nav-collapse">
-        <select class="form-select form-select-sm" id="filter-camera" style="width:90px"><option value="">все камеры</option></select>
-        <select class="form-select form-select-sm" id="filter-class" style="width:80px"><option value="">все классы</option></select>
-        <div class="autocomplete-wrap"><input class="form-control form-control-sm" id="filter-name" data-autocomplete placeholder="имя..." style="width:100px"></div>
-        <select class="form-select form-select-sm" id="filter-sort" style="width:120px" onchange="loadObjects(0)">
-          <option value="-last_seen">сначала новые</option>
-          <option value="+last_seen">сначала старые</option>
-          <option value="+first_seen">по появлению</option>
-          <option value="-first_seen">новые объекты</option>
-        </select>
-        <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" id="group-by-name" onchange="loadObjects(0)"><label class="form-check-label">групп.</label></div>
-        <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" id="show-ignored" onchange="loadObjects(0)"><label class="form-check-label">ignor.</label></div>
-        <button class="btn-neon-fill py-0" onclick="loadObjects(0)">Поиск</button>
-        <button class="btn-muted py-0" onclick="resetFilters()">Сброс</button>
-
-        <span style="color:var(--muted);font-size:.75rem" id="obj-count">—</span>
-
-        <button class="btn-neon py-0" onclick="reloadConfig()" title="Перечитать конфигурацию">↻</button>
-        <button class="btn-muted py-0" onclick="openSettings()" title="Настройки системы">⚙</button>
-        <button class="btn-muted py-0" id="btn-mode" onclick="toggleMode()" title="Переключить режим">👁</button>
-        <button class="btn-muted py-0" id="btn-pause" onclick="togglePause()" title="Пауза автообновления">⏸</button>
-        <button class="btn-muted py-0" onclick="location.reload()">Обновить</button>
-        <span id="badge-health" style="font-size:.7rem;font-weight:700;letter-spacing:.5px;padding:2px 10px;border-radius:4px;background:var(--muted);color:#04070d">—</span>
+      <div class="d-none d-md-flex align-items-center gap-2 flex-wrap ms-auto" id="nav-collapse">
+        <button class="btn-neon nav-btn" onclick="reloadConfig()" title="Перечитать конфигурацию">↻</button>
+        <button class="btn-muted nav-btn" onclick="openSettings()" title="Настройки системы">⚙</button>
+        <button class="btn-muted nav-btn" id="btn-mode" onclick="toggleMode()" title="Переключить режим">👁</button>
+        <button class="btn-muted nav-btn" id="btn-pause" onclick="togglePause()" title="Пауза автообновления">⏸</button>
+        <button class="btn-muted nav-btn" onclick="location.reload()">Обновить</button>
+        <span class="nav-btn" id="badge-health" style="background:var(--muted);color:#04070d;border-radius:6px;font-weight:700;letter-spacing:.5px;display:inline-block;text-align:center">—</span>
       </div>
     </div>
   </div>
@@ -252,7 +265,7 @@ input::placeholder, select option { color: var(--muted) !important; }
 
   <div class="row">
     <!-- Table + Preview (left) -->
-    <div class="col-md-6 main-col">
+    <div class="col-md-6 main-col" id="main-col">
       <!-- Live preview -->
       <div class="live-preview d-none" id="live-preview">
         <div style="position:relative;flex-shrink:0;width:50%">
@@ -264,26 +277,50 @@ input::placeholder, select option { color: var(--muted) !important; }
           <div style="color:var(--muted);font-size:.8rem">Камера — <code id="live-cam">—</code></div>
           <div style="color:var(--muted);font-size:.8rem">Дата и время — <span id="live-ts">—</span></div>
           <div style="color:var(--muted);font-size:.8rem">Точность — <span id="live-conf">—</span></div>
+          <div style="color:var(--muted);font-size:.8rem"><span id="live-face">—</span> · <span id="live-plate">—</span> · <span id="live-vmr">—</span></div>
         </div>
       </div>
-      <div class="table-cam" id="table-wrapper" style="max-height:calc(100vh - 420px);overflow-y:auto">
-        <div class="table-responsive">
-          <table class="table table-sm mb-0" id="obj-table">
-            <thead>
-              <tr>
-                <th>Имя</th>
-                <th>Класс</th>
-                <th>Камера</th>
-                <th>Замечен</th>
-              </tr>
-            </thead>
-            <tbody id="obj-tbody"></tbody>
-          </table>
+      <div class="main-table-col">
+        <div class="view-info-card d-none" id="view-info-card">
+          <div class="vi-row1"><span id="vi-class">—</span> <span id="vi-name">—</span></div>
+          <div class="vi-row2"><span id="vi-cam">—</span> · <span id="vi-ts">—</span> · <span id="vi-conf">—</span></div>
+          <div class="vi-row2"><span id="vi-face">—</span> · <span id="vi-plate">—</span> · <span id="vi-vmr">—</span></div>
         </div>
-      </div>
-      <div class="d-flex justify-content-between align-items-center mt-1 pagination-row">
-        <nav><ul class="pagination pagination-sm mb-0" id="obj-pagi"></ul></nav>
-        <span style="color:var(--muted);font-size:.75rem" id="obj-range"></span>
+        <div class="table-card-filters d-flex align-items-center gap-2 flex-wrap pb-1">
+          <select class="form-select form-select-sm" id="filter-camera" style="width:90px"><option value="">все камеры</option></select>
+          <select class="form-select form-select-sm" id="filter-class" style="width:80px"><option value="">все классы</option></select>
+          <div class="autocomplete-wrap"><input class="form-control form-control-sm" id="filter-name" data-autocomplete placeholder="имя..." style="width:100px"></div>
+          <select class="form-select form-select-sm" id="filter-sort" style="width:120px" onchange="loadObjects(0)">
+            <option value="-last_seen">сначала новые</option>
+            <option value="+last_seen">сначала старые</option>
+            <option value="+first_seen">по появлению</option>
+            <option value="-first_seen">новые объекты</option>
+          </select>
+          <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" id="group-by-name" onchange="loadObjects(0)"><label class="form-check-label">групп.</label></div>
+          <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" id="show-ignored" onchange="loadObjects(0)"><label class="form-check-label">ignor.</label></div>
+          <button class="btn-neon-fill py-0" onclick="loadObjects(0)">Поиск</button>
+          <button class="btn-muted py-0" onclick="resetFilters()">Сброс</button>
+          <span style="color:var(--muted);font-size:.75rem" id="obj-count">—</span>
+        </div>
+        <div class="table-cam" id="table-wrapper">
+          <div class="table-responsive">
+            <table class="table table-sm mb-0" id="obj-table">
+              <thead>
+                <tr>
+                  <th>Имя</th>
+                  <th>Класс</th>
+                  <th>Камера</th>
+                  <th>Замечен</th>
+                </tr>
+              </thead>
+              <tbody id="obj-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="d-flex justify-content-between align-items-center table-card-pagi pagination-row">
+          <nav><ul class="pagination pagination-sm mb-0" id="obj-pagi"></ul></nav>
+          <span style="color:var(--muted);font-size:.75rem" id="obj-range"></span>
+        </div>
       </div>
     </div>
 
@@ -554,10 +591,27 @@ function renderPagination() {
   const pages = Math.ceil(currentTotal / s);
   const current = Math.floor(currentOffset / s);
   let html = '<li class="page-item ' + (current === 0 ? 'disabled' : '') + '"><a class="page-link" href="#" onclick="loadObjects(0);return false">&laquo;</a></li>';
-  for (let i = 0; i < pages && i < 15; i++) {
-    html += '<li class="page-item ' + (i === current ? 'active' : '') + '"><a class="page-link" href="#" onclick="loadObjects(' + (i * s) + ');return false">' + (i + 1) + '</a></li>';
+  const maxVisible = mode === 'view' ? 3 : 8;
+  if (pages <= maxVisible + 2) {
+    for (let i = 0; i < pages; i++) {
+      html += '<li class="page-item ' + (i === current ? 'active' : '') + '"><a class="page-link" href="#" onclick="loadObjects(' + (i * s) + ');return false">' + (i + 1) + '</a></li>';
+    }
+  } else {
+    let start = Math.max(0, current - Math.floor(maxVisible / 2));
+    let end = Math.min(pages, start + maxVisible);
+    if (end === pages) start = Math.max(0, pages - maxVisible);
+    if (start > 0) {
+      html += '<li class="page-item"><a class="page-link" href="#" onclick="loadObjects(0);return false">1</a></li>';
+      if (start > 1) html += '<li class="page-item disabled"><a class="page-link" href="#">…</a></li>';
+    }
+    for (let i = start; i < end; i++) {
+      html += '<li class="page-item ' + (i === current ? 'active' : '') + '"><a class="page-link" href="#" onclick="loadObjects(' + (i * s) + ');return false">' + (i + 1) + '</a></li>';
+    }
+    if (end < pages) {
+      if (end < pages - 1) html += '<li class="page-item disabled"><a class="page-link" href="#">…</a></li>';
+      html += '<li class="page-item"><a class="page-link" href="#" onclick="loadObjects(' + ((pages - 1) * s) + ');return false">' + pages + '</a></li>';
+    }
   }
-  if (pages > 15) html += '<li class="page-item disabled"><a class="page-link" href="#">…</a></li>';
   html += '<li class="page-item ' + (current >= pages - 1 ? 'disabled' : '') + '"><a class="page-link" href="#" onclick="loadObjects(' + ((pages - 1) * s) + ');return false">&raquo;</a></li>';
   document.getElementById('obj-pagi').innerHTML = html;
 }
@@ -832,6 +886,18 @@ async function loadLive() {
     document.getElementById('live-cam').textContent = d.camera_id;
     document.getElementById('live-conf').textContent = d.confidence ? (d.confidence * 100).toFixed(0) + '%' : '—';
     document.getElementById('live-ts').textContent = d.timestamp ? d.timestamp.replace('T', ' ').slice(0, 19) : '—';
+    document.getElementById('live-face').textContent = d.face_id ? 'face: ' + d.face_id : '—';
+    document.getElementById('live-plate').textContent = d.plate_number ? 'plate: ' + d.plate_number : '—';
+    document.getElementById('live-vmr').textContent = d.vmr_brand ? 'vmr: ' + d.vmr_brand : '—';
+    // View info card
+    document.getElementById('vi-class').textContent = d.class_name || '—';
+    document.getElementById('vi-name').textContent = d.name ? '"' + d.name + '"' : '—';
+    document.getElementById('vi-cam').textContent = d.camera_id || '—';
+    document.getElementById('vi-ts').textContent = d.timestamp ? d.timestamp.replace('T', ' ').slice(0, 19) : '—';
+    document.getElementById('vi-conf').textContent = d.confidence ? (d.confidence * 100).toFixed(0) + '%' : '—';
+    document.getElementById('vi-face').textContent = d.face_id ? 'face: ' + d.face_id : '—';
+    document.getElementById('vi-plate').textContent = d.plate_number ? 'plate: ' + d.plate_number : '—';
+    document.getElementById('vi-vmr').textContent = d.vmr_brand ? 'vmr: ' + d.vmr_brand : '—';
   } catch {}
 }
 
@@ -843,56 +909,65 @@ function toggleMode() {
   applyMode();
   loadObjects(0);
 }
-const _viewH = 'calc(100vh - 68px)';
+const _editTableH = 'calc(100vh - 560px)';
 function applyMode() {
   const btn = document.getElementById('btn-mode');
   const preview = document.getElementById('live-preview');
-  const mainCol = document.querySelector('.main-col');
+  const mainCol = document.getElementById('main-col');
   const detailCol = document.querySelector('.detail-col');
   const tableWrap = document.getElementById('table-wrapper');
+  const mainTableCol = document.querySelector('.main-table-col');
   const imgWrap = preview.querySelector('div:first-child');
   const info = preview.querySelector('.info');
-  const container = document.querySelector('.container-fluid');
   if (mode === 'view') {
+    document.body.classList.remove('mode-edit');
+    document.body.classList.add('mode-view');
     btn.textContent = '✏';
     btn.title = 'Режим редактирования';
-    preview.classList.remove('d-none');
     mainCol.dataset.colClass = mainCol.className;
-    mainCol.className = 'col-12 d-flex align-items-stretch';
+    mainCol.className = 'col-12';
+    mainCol.style.display = 'flex';
+    mainCol.style.flexDirection = 'row';
+    mainCol.style.alignItems = 'stretch';
     mainCol.style.gap = '0';
-    detailCol.style.display = 'none';
+    preview.classList.remove('d-none');
     preview.style.width = '70%';
-    preview.style.height = _viewH;
+    preview.style.height = '';
     preview.style.margin = '0';
     preview.style.borderRadius = '0';
     if (imgWrap) {
       imgWrap.dataset.imgStyle = imgWrap.getAttribute('style');
-      imgWrap.style.cssText = 'width:100%;position:relative;display:flex;align-items:center;justify-content:center;height:100%';
+      imgWrap.style.cssText = 'width:100%;flex-shrink:0';
     }
     if (info) info.style.display = 'none';
-    tableWrap.style.width = '30%';
-    tableWrap.style.height = _viewH;
-    tableWrap.style.maxHeight = _viewH;
-    tableWrap.style.overflowY = 'auto';
+    mainTableCol.style.width = '30%';
+    tableWrap.style.maxHeight = '';
+    tableWrap.style.flex = '1 1 auto';
+    tableWrap.style.overflowY = '';
+    detailCol.style.display = 'none';
     const tbl = document.getElementById('obj-table');
     if (tbl) { tbl.style.tableLayout = 'fixed'; tbl.style.width = '100%'; }
   } else {
+    document.body.classList.remove('mode-view');
+    document.body.classList.add('mode-edit');
     btn.textContent = '👁';
     btn.title = 'Режим просмотра';
-    preview.classList.add('d-none');
-    mainCol.className = mainCol.dataset.colClass || 'col-md-6';
+    mainCol.className = mainCol.dataset.colClass || 'col-md-6 main-col';
+    mainCol.style.display = '';
+    mainCol.style.flexDirection = '';
+    mainCol.style.alignItems = '';
     mainCol.style.gap = '';
-    detailCol.style.display = '';
     preview.style.width = '';
     preview.style.height = '';
     preview.style.margin = '';
     preview.style.borderRadius = '';
     if (imgWrap) imgWrap.setAttribute('style', imgWrap.dataset.imgStyle || '');
     if (info) info.style.display = '';
-    tableWrap.style.width = '';
-    tableWrap.style.height = '';
+    mainTableCol.style.width = '';
     tableWrap.style.maxHeight = '';
+    tableWrap.style.flex = '';
     tableWrap.style.overflowY = '';
+    detailCol.style.display = '';
     const tbl = document.getElementById('obj-table');
     if (tbl) { tbl.style.tableLayout = ''; tbl.style.width = ''; }
   }
@@ -903,7 +978,12 @@ function pageSize() { return mode === 'view' ? 10 : (window._PAGE_SIZE || PAGE_S
 // Apply view-mode visibility after any table render
 function syncViewMode() {
   const pagiRow = document.querySelector('.pagination-row');
-  if (pagiRow) pagiRow.style.display = mode === 'view' ? 'none' : '';
+  if (pagiRow) {
+    pagiRow.style.display = '';
+    pagiRow.classList.add('d-flex');
+  }
+  const viCard = document.getElementById('view-info-card');
+  if (viCard) viCard.classList.toggle('d-none', mode !== 'view');
   const isView = mode === 'view';
   document.querySelectorAll('#obj-table th:nth-child(2),#obj-table th:nth-child(3)').forEach(el => el.style.display = isView ? 'none' : '');
   document.querySelectorAll('#obj-table td:nth-child(2),#obj-table td:nth-child(3)').forEach(el => el.style.display = isView ? 'none' : '');

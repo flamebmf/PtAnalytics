@@ -1,0 +1,22 @@
+triggers:
+  - name: "example_plate_alert"
+    description: "Example: alert on specific plate"
+    type: plate
+    values: []
+    actions:
+      - type: webhook
+        url: "http://localhost:9000/alert"
+        method: POST
+        headers:
+          Content-Type: application/json
+      - type: log
+        level: WARNING
+
+  - name: "known_faces"
+    description: "Search known faces in DB on detection"
+    type: face
+    source_db: true
+    values: []
+    actions:
+      - type: log
+        level: INFO

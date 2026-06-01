@@ -1,0 +1,89 @@
+version: "3.9"
+
+# docker-compose.yml для cam-analyzer
+# Использование:
+#   1. cp .env.example .env и заполнить
+#   2. docker compose up -d
+#
+# Для GPU: раскомментировать deploy/reservations в cam-analyzer
+# Для внешней БД: указать DB_HOST в .env, удалить сервис postgres
+
+services:
+  cam-analyzer:
+    build:
+      context: .
+      dockerfile: docker/Containerfile.debian
+    image: cam-analyzer:latest
+    container_name: cam-analyzer
+    restart: unless-stopped
+    ports:
+      - "${HEALTH_PORT:-8090}:8090"
+    environment:
+      - TZ=${TZ:-Europe/Moscow}
+      - DB_HOST=${DB_HOST:-postgres}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-cam}
+      - DB_USER=${DB_USER:-cam}
+      - DB_PASSWORD=${DB_PASSWORD:-change_me}
+      - MQTT_HOST=${MQTT_HOST:-mosquitto}
+      - MQTT_PORT=${MQTT_PORT:-1883}
+      - HEALTH_PORT=${HEALTH_PORT:-8090}
+      - OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
+      - MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
+      - YOLO_CONFIG_DIR=/app/models/ultralytics
+      - PADDLE_HOME=/app/models/paddle
+      - XDG_CACHE_HOME=/app/models/cache
+      - HOME=/app/models/home
+      - PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
+    volumes:
+      - cam-frames:/data/frames
+      - cam-models:/app/models
+      - ./config:/app/config:ro
+      - ./training/fine-tuned.pt:/app/models/fine-tuned.pt:ro
+    # Для GPU (nvidia): установить nvidia-container-toolkit и раскомментировать:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: cam-postgres
+    restart: unless-stopped
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_DB=${DB_NAME:-cam}
+      - POSTGRES_USER=${DB_USER:-cam}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-change_me}
+      - POSTGRES_HOST_AUTH_METHOD=md5
+    volumes:
+      - cam-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${DB_USER:-cam}", "-d", "${DB_NAME:-cam}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  mosquitto:
+    image: eclipse-mosquitto:2-openssl
+    container_name: cam-mosquitto
+    restart: unless-stopped
+    ports:
+      - "${MQTT_PORT:-1883}:1883"
+    volumes:
+      - ./config/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - cam-mqtt-data:/mosquitto/data
+
+volumes:
+  cam-frames:
+  cam-models:
+  cam-pgdata:
+  cam-mqtt-data:

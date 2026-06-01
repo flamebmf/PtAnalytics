@@ -9,8 +9,8 @@ app:
   ffmpeg_read_attempts: 1024
 
 general:
-  cleanup_interval_seconds: 300     # periodic orphan cleanup
-  stats_log_interval_seconds: 30    # periodic STATS log
+  cleanup_interval_seconds: 300
+  stats_log_interval_seconds: 30
   health_port: 8090
 
 database:
@@ -18,10 +18,10 @@ database:
   port: 5432
   name: cam
   user: cam
-  password: ""
+  password: "change_me"
 
 mqtt:
-  enabled: false                    # MQTT integration (requires paho-mqtt)
+  enabled: false
   host: localhost
   port: 1883
   client_id: cam-analyzer
@@ -43,7 +43,7 @@ tracker:
   n_init: 3
   nn_budget: 100
   depart_timeout: 10.0
-  frame_buffer_size: 30            # frames buffered for best entry/exit selection
+  frame_buffer_size: 30
 
 motion:
   threshold: 0.005
@@ -62,8 +62,8 @@ face:
   search_threshold: 0.6
 
 vmr:
-  enabled: true                     # vehicle make & model recognition (CLIP)
-  min_confidence: 0.3               # minimum similarity score for brand match
+  enabled: true
+  min_confidence: 0.3
 
 dataset:
   crop_enabled: true
@@ -72,7 +72,7 @@ dataset:
 training:
   enabled: true
   min_samples_per_class: 30
-  min_show_frames: 5               # groups with fewer frames hidden in UI
+  min_show_frames: 5
   epochs: 30
   batch_size: 8
   imgsz: 1280

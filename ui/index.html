@@ -42,9 +42,10 @@ body {
 .navbar-brand-cam span.grad {
   background: linear-gradient(135deg, var(--accent), var(--accent2));
   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  font-size: 1.1rem; font-weight: 900;
 }
 .logo-svg {
-  width: 48px; height: auto;
+  width: 41px; height: auto;
   filter: drop-shadow(0 0 12px rgba(0,212,255,.4));
 }
 /* Buttons */
@@ -214,7 +215,7 @@ input::placeholder, select option { color: var(--muted) !important; }
           <text x="65%" y="70%" text-anchor="middle" fill="#7b61ff" font-size="75" font-weight="bold" dy=".3em">t</text>
           <defs><linearGradient id="gh" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#00d4ff"/><stop offset="100%" stop-color="#7b61ff"/></linearGradient></defs>
         </svg>
-        <span style="font-size:1.15rem">Pt<span class="grad"> Analytics</span></span>
+        <span class="grad">Analytics</span>
       </a>
 
       <button class="btn-muted d-md-none me-2" type="button" onclick="document.getElementById('nav-collapse').classList.toggle('show')" style="font-size:1rem;padding:2px 8px">☰</button>

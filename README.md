@@ -1,5 +1,164 @@
 # CAM Video Analytics
 
+AI video analytics with object detection, tracking, face/LPR recognition, and user-guided fine-tuning.
+
+---
+
+## Stack
+
+| Component | Technology |
+|-----------|-----------|
+| Containerization | Podman (RHEL) / Docker |
+| Database | PostgreSQL 17 with pgvector |
+| MQTT | Mosquitto |
+| Object detection | YOLOv11 (Ultralytics) |
+| Tracking | DeepSORT (Kalman + IoU) |
+| Face recognition | InsightFace (ArcFace) |
+| License plates | PaddleOCR |
+| Vehicle make | CLIP zero-shot |
+| UI | Bootstrap 5, vanilla JS |
+
+## Architecture
+
+Two-model approach:
+- **YoloDetector** — base yolo11m (COCO 80 classes) — runs only on motion frames
+- **CropClassifier** — fine-tuned.pt (custom classes) — classifies cropped objects
+
+COCO detection and name classification run on crops. Training is done separately; resulting `fine-tuned.pt` is uploaded to the server.
+
+## Quick Start
+
+### Docker
+
+```bash
+# 1. Copy and configure
+cp config/cameras.yaml.example config/cameras.yaml
+cp config/settings.yaml.example config/settings.yaml
+cp config/triggers.yaml.example config/triggers.yaml
+cp .env.example .env
+# edit .env
+
+# 2. Run
+docker compose up -d
+
+# 3. Check
+curl http://localhost:8090/health
+```
+
+### Podman (RHEL 9/10)
+
+```bash
+bash scripts/install-deps.sh
+cp .env.example .env && vim .env
+WITH_LOCAL_PG=yes WITH_MQTT=yes bash scripts/deploy.sh
+curl http://localhost:8090/health
+```
+
+## Configuration
+
+All configs in `config/`:
+- `cameras.yaml` — RTSP cameras (copy from .example, set your rtsp_url)
+- `settings.yaml` — detection thresholds, motion, tracker, LPR, face, VMR
+- `triggers.yaml` — triggers and actions (webhook/mqtt/log)
+
+Most settings are available via the web UI (gear icon in top right). Changes apply via `PUT /config` with hot-reload — no restart needed.
+
+## UI Modes
+
+### View 👁
+
+- Image 70% + compact table 30%
+- Only name and last seen time
+- Suitable for monitoring
+
+### Edit ✏
+
+- Full table with detail panel on the right
+- Search / filters / grouping
+- Rename objects, assign classes
+- Ignore and delete
+
+Toggle button in the top right of the navbar.
+
+## Fine-Tuning
+
+1. Assign names to objects via UI
+2. In "Дообучение" tab (Settings → 6th tab) download dataset ZIP
+3. On a machine with GPU: run `training/train.bat`
+4. Replace `fine-tuned.pt` on the server
+5. Click "Загрузить модель" in UI or restart the container
+
+`train.py` automatically creates a combined dataset from all named classes.
+
+## Environment Variables (.env)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DB_HOST` | `postgres` (docker) | PostgreSQL host |
+| `DB_PORT` | `5432` | Port |
+| `DB_NAME` | `cam` | Database name |
+| `DB_USER` | `cam` | User |
+| `DB_PASSWORD` | `change_me` | Password |
+| `MQTT_HOST` | `mosquitto` (docker) | MQTT host |
+| `MQTT_PORT` | `1883` | MQTT port |
+| `HEALTH_PORT` | `8090` | Health endpoint port |
+| `TZ` | `Europe/Moscow` | Time zone |
+| `WITH_LOCAL_PG` | `no` | Podman: PG in same pod |
+| `WITH_GPU` | `no` | Podman: NVIDIA GPU passthrough |
+| `OMP_NUM_THREADS` | `4` | CPU threads for OpenMP |
+
+## API
+
+### Endpoints (port 8090)
+
+```bash
+curl http://localhost:8090/health              # status + summary
+curl http://localhost:8090/stats               # aggregated stats
+curl http://localhost:8090/objects?limit=20    # object list
+curl http://localhost:8090/objects/{id}        # object details
+curl http://localhost:8090/filters             # available filters
+curl http://localhost:8090/config              # config (GET/PUT)
+curl http://localhost:8090/config/reload       # hot-reload
+```
+
+## Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/deploy.sh` | Deploy podman pod |
+| `scripts/build-push.sh` | Build + push to registry |
+| `scripts/test-stream.sh` | Check RTSP/ONVIF cameras |
+| `scripts/health-check.sh` | Health monitoring |
+| `training/train.py` | Fine-tune YOLO |
+| `training/train.bat` | Same (Windows) |
+
+## Project Structure
+
+```
+cam/
+├── config/                # configuration
+│   ├── cameras.yaml       # RTSP cameras
+│   ├── settings.yaml      # global settings
+│   ├── triggers.yaml      # triggers
+│   └── mqtt/              # Mosquitto config
+├── docker/                # Containerfiles
+├── src/                   # source code
+│   ├── detection/         # YOLO + CropClassifier
+│   ├── recognition/       # LPR, Face, VMR
+│   ├── tracking/          # DeepSORT
+│   ├── storage/           # PostgreSQL + repository
+│   ├── pipeline.py        # main pipeline
+│   └── main.py            # aiohttp server
+├── training/              # fine-tuning
+├── ui/                    # web interface
+├── docker-compose.yml     # Docker Compose
+└── .env.example           # env template
+```
+
+---
+
+# CAM Video Analytics
+
 Система видеоаналитики с AI-обнаружением, трекингом, распознаванием лиц/номеров и дообучением на пользовательских данных.
 
 ## Стек
@@ -54,17 +213,12 @@ curl http://localhost:8090/health
 
 ## Конфигурация
 
-### Файлы
-
 Все конфиги в `config/`:
 - `cameras.yaml` — RTSP-камеры (копия из .example, вписать свои rtsp_url)
 - `settings.yaml` — пороги детекции, motion, трекер, LPR, face, VMR
 - `triggers.yaml` — триггеры и действия (webhook/mqtt/log)
 
-### UI Settings
-
-Большинство настроек доступно через веб-интерфейс (шестерёнка в правом верхнем углу).
-Изменения применяются через `PUT /config` и hot-reload пайплайнов без перезапуска.
+Большинство настроек доступно через веб-интерфейс (шестерёнка в правом верхнем углу). Изменения применяются через `PUT /config` и hot-reload — без перезапуска.
 
 ## Режимы UI
 
@@ -84,8 +238,6 @@ curl http://localhost:8090/health
 Переключение — кнопка в правом верхнем углу навбара.
 
 ## Дообучение
-
-Процесс:
 
 1. Через UI задать имена объектам
 2. На вкладке "Дообучение" (Settings → 6-я вкладка) скачать ZIP с датасетом

@@ -1,4 +1,4 @@
-# Copyright (c) 2026 PluromTech.com
+# Copyright (c) 2026 PlurumTech.com
 # SPDX-License-Identifier: GPL-3.0-only
 from .capture.stream_reader import StreamReader
 from .motion import MotionDetector

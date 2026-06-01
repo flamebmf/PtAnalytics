@@ -1,4 +1,4 @@
-# Copyright (c) 2026 PluromTech.com
+# Copyright (c) 2026 PlurumTech.com
 # SPDX-License-Identifier: GPL-3.0-only
 """Train YOLO on combined dataset, produce fine-tuned.pt with all custom classes."""
 import sys, shutil, json, torch, yaml, zipfile

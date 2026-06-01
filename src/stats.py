@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PluromTech.com
+# SPDX-License-Identifier: GPL-3.0-only
 import json
 import time
 from dataclasses import dataclass, field, asdict

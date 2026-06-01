@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PluromTech.com
+# SPDX-License-Identifier: GPL-3.0-only
 from collections import deque
 from threading import Thread, Event
 from queue import Queue, Full, Empty

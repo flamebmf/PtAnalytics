@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PluromTech.com
+# SPDX-License-Identifier: GPL-3.0-only
 version: "3.9"
 
 # podman-compose.yml для cam-analyzer на RHEL 9/10

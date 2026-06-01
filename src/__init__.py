@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PluromTech.com
+# SPDX-License-Identifier: GPL-3.0-only
 from .capture.stream_reader import StreamReader
 from .motion import MotionDetector
 from .detection import YoloDetector

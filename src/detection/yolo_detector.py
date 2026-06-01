@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PluromTech.com
+# SPDX-License-Identifier: GPL-3.0-only
 import os
 import numpy as np
 import torch

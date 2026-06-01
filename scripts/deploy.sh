@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PluromTech.com
+# SPDX-License-Identifier: GPL-3.0-only
 #!/bin/bash
 # ============================================================
 # deploy.sh — развёртывание cam-analyzer в Podman на RHEL 9/10

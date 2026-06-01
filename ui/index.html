@@ -238,7 +238,7 @@ input::placeholder, select option { color: var(--muted) !important; }
 
         <button class="btn-neon py-0" onclick="reloadConfig()" title="Перечитать конфигурацию">↻</button>
         <button class="btn-muted py-0" onclick="openSettings()" title="Настройки системы">⚙</button>
-        <button class="btn-neon-fill py-0" onclick="openTrainingTab()">Дообучение</button>
+        <button class="btn-muted py-0" id="btn-mode" onclick="toggleMode()" title="Переключить режим">👁</button>
         <button class="btn-muted py-0" id="btn-pause" onclick="togglePause()" title="Пауза автообновления">⏸</button>
         <button class="btn-muted py-0" onclick="location.reload()">Обновить</button>
         <span id="badge-health" style="font-size:.7rem;font-weight:700;letter-spacing:.5px;padding:2px 10px;border-radius:4px;background:var(--muted);color:#04070d">—</span>
@@ -251,7 +251,7 @@ input::placeholder, select option { color: var(--muted) !important; }
 
   <div class="row">
     <!-- Table + Preview (left) -->
-    <div class="col-md-6">
+    <div class="col-md-6 main-col">
       <!-- Live preview -->
       <div class="live-preview d-none" id="live-preview">
         <div style="position:relative;flex-shrink:0;width:50%">
@@ -280,14 +280,14 @@ input::placeholder, select option { color: var(--muted) !important; }
           </table>
         </div>
       </div>
-      <div class="d-flex justify-content-between align-items-center mt-1">
+      <div class="d-flex justify-content-between align-items-center mt-1 pagination-row">
         <nav><ul class="pagination pagination-sm mb-0" id="obj-pagi"></ul></nav>
         <span style="color:var(--muted);font-size:.75rem" id="obj-range"></span>
       </div>
     </div>
 
     <!-- Detail (right) -->
-    <div class="col-md-6">
+    <div class="col-md-6 detail-col">
       <div id="detail" class="detail-panel detail-scroll">
         <div class="d-flex justify-content-between align-items-start mb-2">
           <h6 class="mb-0" id="detail-title" style="font-weight:700;font-size:.8rem">—</h6>
@@ -452,7 +452,7 @@ async function loadObjects(offset) {
   loading = true;
   currentOffset = offset;
   const groupByName = document.getElementById('group-by-name').checked;
-  const params = new URLSearchParams({ limit: window._PAGE_SIZE || PAGE_SIZE, offset: groupByName ? 0 : offset });
+  const params = new URLSearchParams({ limit: pageSize(), offset: groupByName ? 0 : offset });
   saveFilters();
   const camera = document.getElementById('filter-camera').value;
   if (camera) params.set('camera_id', camera);
@@ -547,10 +547,8 @@ function renderGrouped(tbody, groups, items) {
   tbody.innerHTML = html || '<tr><td colspan="4" class="text-center" style="color:var(--muted)">нет объектов</td></tr>';
 }
 
-function ps() { return window._PAGE_SIZE || PAGE_SIZE; }
-
 function renderPagination() {
-  const s = ps();
+  const s = pageSize();
   const pages = Math.ceil(currentTotal / s);
   const current = Math.floor(currentOffset / s);
   let html = '<li class="page-item ' + (current === 0 ? 'disabled' : '') + '"><a class="page-link" href="#" onclick="loadObjects(0);return false">&laquo;</a></li>';
@@ -835,6 +833,69 @@ async function loadLive() {
   } catch {}
 }
 
+// ---- View/Edit mode ----
+let mode = localStorage.getItem('cam_mode') || 'edit';
+function toggleMode() {
+  mode = mode === 'edit' ? 'view' : 'edit';
+  localStorage.setItem('cam_mode', mode);
+  applyMode();
+  loadObjects(0);
+}
+function applyMode() {
+  const btn = document.getElementById('btn-mode');
+  const preview = document.getElementById('live-preview');
+  const mainCol = document.querySelector('.main-col');
+  const detailCol = document.querySelector('.detail-col');
+  const tableWrap = document.getElementById('table-wrapper');
+  const imgWrap = preview.querySelector('div:first-child');
+  const info = preview.querySelector('.info');
+  const pagiRow = document.querySelector('.pagination-row');
+  if (mode === 'view') {
+    btn.textContent = '✏';
+    btn.title = 'Режим редактирования';
+    preview.classList.remove('d-none');
+    mainCol.dataset.colClass = mainCol.className;
+    mainCol.className = 'col-12 d-flex align-items-stretch';
+    mainCol.style.gap = '0';
+    detailCol.style.display = 'none';
+    preview.style.width = '70%';
+    preview.style.height = 'calc(100vh - 56px)';
+    preview.style.margin = '0';
+    preview.style.borderRadius = '0';
+    if (imgWrap) {
+      imgWrap.dataset.imgStyle = imgWrap.getAttribute('style');
+      imgWrap.style.cssText = 'width:100%;position:relative;display:flex;align-items:center;justify-content:center;height:100%';
+    }
+    if (info) info.style.display = 'none';
+    tableWrap.style.width = '30%';
+    tableWrap.style.height = 'calc(100vh - 56px)';
+    tableWrap.style.maxHeight = 'calc(100vh - 56px)';
+    if (pagiRow) pagiRow.style.display = 'none';
+    document.querySelectorAll('#obj-table th:nth-child(2),#obj-table th:nth-child(3)').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('#obj-table td:nth-child(2),#obj-table td:nth-child(3)').forEach(el => el.style.display = 'none');
+  } else {
+    btn.textContent = '👁';
+    btn.title = 'Режим просмотра';
+    preview.classList.add('d-none');
+    mainCol.className = mainCol.dataset.colClass || 'col-md-6';
+    mainCol.style.gap = '';
+    detailCol.style.display = '';
+    preview.style.width = '';
+    preview.style.height = '';
+    preview.style.margin = '';
+    preview.style.borderRadius = '';
+    if (imgWrap) imgWrap.setAttribute('style', imgWrap.dataset.imgStyle || '');
+    if (info) info.style.display = '';
+    tableWrap.style.width = '';
+    tableWrap.style.height = '';
+    tableWrap.style.maxHeight = '';
+    if (pagiRow) pagiRow.style.display = '';
+    document.querySelectorAll('#obj-table th:nth-child(2),#obj-table th:nth-child(3)').forEach(el => el.style.display = '');
+    document.querySelectorAll('#obj-table td:nth-child(2),#obj-table td:nth-child(3)').forEach(el => el.style.display = '');
+  }
+}
+function pageSize() { return mode === 'view' ? 10 : (window._PAGE_SIZE || PAGE_SIZE); }
+
 // ---- Training tab ----
 function openTrainingTab() {
   if (!settingsModal) settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'));
@@ -1002,7 +1063,7 @@ function showSettingsTab(tab) {
 function renderCamerasTab(data) {
   const cams = data.cameras || [];
   return cams.map((c, i) => `
-    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgba(255,255,255,.06)">
+    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div class="d-flex align-items-center gap-2 mb-1">
         <strong style="width:100px">${escapeHtml(c.name || c.id)}</strong>
         <label style="font-size:.7rem"><input type="checkbox" data-cam="${i}" data-key="enabled" ${c.enabled ? 'checked' : ''}> вкл</label>
@@ -1021,7 +1082,7 @@ function renderDetectorTab(data) {
   const s = data.settings || {};
   const d = s.detector || {};
   return `
-    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgba(255,255,255,.06)">
+    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div style="font-size:.75rem;color:var(--accent);margin-bottom:6px">YOLO Detector</div>
       <div class="row g-2" style="font-size:.75rem">
         <div class="col-4"><label>model <input type="text" id="cfg-det-model" value="${escapeHtml(d.model || 'yolo11m.pt')}" class="form-control form-control-sm"></label></div>
@@ -1034,7 +1095,7 @@ function renderDetectorTab(data) {
         <div class="col-4"><label>device <input type="text" id="cfg-det-device" value="${d.device || 'cpu'}" class="form-control form-control-sm"></label></div>
       </div>
     </div>
-    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgba(255,255,255,.06)">
+    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div style="font-size:.75rem;color:var(--accent);margin-bottom:6px">Tracker</div>
       <div class="row g-2" style="font-size:.75rem">
         ${renderTrackerFields(s.tracker || {})}
@@ -1054,7 +1115,7 @@ function renderMotionTab(data) {
   const s = data.settings || {};
   const m = s.motion || {};
   return `
-    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgba(255,255,255,.06)">
+    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div style="font-size:.75rem;color:var(--accent);margin-bottom:6px">Motion Detection</div>
       <div class="row g-2" style="font-size:.75rem">
         <div class="col-4"><label>threshold <input type="text" id="cfg-mot-threshold" value="${m.threshold || 0.005}" class="form-control form-control-sm"></label></div>
@@ -1071,14 +1132,14 @@ function renderRecognitionTab(data) {
   const face = s.face || {};
   const vmr = s.vmr || {};
   return `
-    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgba(255,255,255,.06)">
+    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div style="font-size:.75rem;color:var(--accent);margin-bottom:6px">LPR — номера</div>
       <div class="row g-2" style="font-size:.75rem">
         <div class="col-3"><label><input type="checkbox" id="cfg-lpr-enabled" ${lpr.enabled!==false?'checked':''}> вкл</label></div>
         <div class="col-4"><label>min_confidence <input type="text" id="cfg-lpr-conf" value="${lpr.min_confidence || 0.6}" class="form-control form-control-sm"></label></div>
       </div>
     </div>
-    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgba(255,255,255,.06)">
+    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div style="font-size:.75rem;color:var(--accent);margin-bottom:6px">Face — лица</div>
       <div class="row g-2" style="font-size:.75rem">
         <div class="col-3"><label><input type="checkbox" id="cfg-face-enabled" ${face.enabled!==false?'checked':''}> вкл</label></div>
@@ -1086,7 +1147,7 @@ function renderRecognitionTab(data) {
         <div class="col-4"><label>search_threshold <input type="text" id="cfg-face-thr" value="${face.search_threshold || 0.6}" class="form-control form-control-sm"></label></div>
       </div>
     </div>
-    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgba(255,255,255,.06)">
+    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div style="font-size:.75rem;color:var(--accent);margin-bottom:6px">VMR — марка машины</div>
       <div class="row g-2" style="font-size:.75rem">
         <div class="col-3"><label><input type="checkbox" id="cfg-vmr-enabled" ${vmr.enabled!==false?'checked':''}> вкл</label></div>
@@ -1102,7 +1163,7 @@ function renderTrainingTab() {
       <a class="btn-muted btn-xs" href="/training/export" title="Скачать датасет всех именованных объектов" style="text-decoration:none">📦 Все</a>
       <button class="btn-neon-fill btn-xs" id="btn-train-all" onclick="startTraining()">Запустить все</button>
     </div>
-    <div id="train-running" class="d-none mb-3 p-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgba(255,255,255,.06)"></div>
+    <div id="train-running" class="d-none mb-3 p-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)"></div>
     <table class="table table-sm table-dark mb-0" style="font-size:.7rem" id="train-table">
       <thead><tr><th>Имя</th><th>Класс</th><th>Объектов</th><th>Кадров</th><th>Готов</th><th></th><th></th></tr></thead>
       <tbody id="train-tbody"><tr><td colspan="7" class="text-center" style="color:var(--muted)">загрузка…</td></tr></tbody>
@@ -1115,14 +1176,14 @@ function renderSystemTab(data) {
   const t = s.training || {};
   const u = s.ui || {};
   return `
-    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgba(255,255,255,.06)">
+    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div style="font-size:.75rem;color:var(--accent);margin-bottom:6px">Общие</div>
       <div class="row g-2" style="font-size:.75rem">
         <div class="col-4"><label>cleanup_interval <input type="number" id="cfg-gen-cleanup" value="${g.cleanup_interval_seconds || 300}" class="form-control form-control-sm"></label></div>
         <div class="col-4"><label>stats_log_interval <input type="number" id="cfg-gen-stats" value="${g.stats_log_interval_seconds || 30}" class="form-control form-control-sm"></label></div>
       </div>
     </div>
-    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgba(255,255,255,.06)">
+    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div style="font-size:.75rem;color:var(--accent);margin-bottom:6px">Обучение</div>
       <div class="row g-2" style="font-size:.75rem">
         <div class="col-3"><label>min_samples <input type="number" id="cfg-trn-min-samples" value="${t.min_samples_per_class || 30}" class="form-control form-control-sm"></label></div>
@@ -1131,7 +1192,7 @@ function renderSystemTab(data) {
         <div class="col-3"><label>imgsz <input type="number" id="cfg-trn-imgsz" value="${t.imgsz || 1280}" class="form-control form-control-sm"></label></div>
       </div>
     </div>
-    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgba(255,255,255,.06)">
+    <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div style="font-size:.75rem;color:var(--accent);margin-bottom:6px">UI</div>
       <div class="row g-2" style="font-size:.75rem">
       <div class="col-4"><label>page_size <input type="number" id="cfg-ui-page" value="${u.page_size || 23}" class="form-control form-control-sm"></label></div>
@@ -1396,6 +1457,7 @@ async function init() {
   loadLive();
   for (const id of ['filter-camera','filter-class','filter-name'])
     document.getElementById(id).addEventListener('change', saveFilters);
+  applyMode();
   startAutoRefresh();
 }
 init();

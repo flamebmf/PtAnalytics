@@ -28,14 +28,6 @@ class StorageRepository:
             ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
         return ts
 
-    def save_snapshot(self, camera_id: str, frame: np.ndarray) -> str:
-        """Save a full-frame snapshot for camera verification."""
-        filename = f"snapshot_{camera_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-        filepath = self.data_dir / filename
-        cv2.imwrite(str(filepath), frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-        logger.info(f"Snapshot saved: {filepath}")
-        return str(filepath)
-
     async def ensure_camera(self, camera_id: str, name: str, rtsp_url: str, fps: int) -> Camera:
         async with await get_session() as session:
             result = await session.execute(
@@ -273,6 +265,7 @@ class StorageRepository:
             result = await session.execute(
                 select(TrackedObject)
                 .where(TrackedObject.embedding.isnot(None))
+                .where(TrackedObject.class_name == "person")
                 .order_by(TrackedObject.embedding.cosine_distance(embedding))
                 .limit(1)
             )

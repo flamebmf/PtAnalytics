@@ -34,7 +34,10 @@ class FineTuner:
         self.epochs = self.cfg.get("epochs", 30)
         self.imgsz = self.cfg.get("imgsz", 1280)
         self.base_model = self.cfg.get("base_model", "yolo11m.pt")
-        self.device = config.get("detector", {}).get("device", "cpu")
+        cfg_device = config.get("detector", {}).get("device", "cpu")
+        if cfg_device == "cpu" and self._cuda_available():
+            cfg_device = "cuda:0"
+        self.device = cfg_device
         self.workers = config.get("detector", {}).get("workers")
         self.batch_size = self.cfg.get("batch_size", 8)
         self.min_show = self.cfg.get("min_show_frames", 5)
@@ -51,6 +54,14 @@ class FineTuner:
     @property
     def state_file(self) -> Path:
         return self.models_dir / ".fine-tune-state"
+
+    @staticmethod
+    def _cuda_available() -> bool:
+        try:
+            import torch
+            return torch.cuda.is_available()
+        except Exception:
+            return False
 
     def _read_state(self) -> dict:
         if self.state_file.exists():
@@ -103,10 +114,10 @@ class FineTuner:
 
         if name_filter:
             # Per-name training: use dominant class, merge all frames regardless of current class
+            group_key = "class_name"
             class_groups: dict[str, list[TrackedObject]] = {}
             for obj in named_objects:
                 class_groups.setdefault(obj.class_name, []).append(obj)
-            # Find class with most frames
             best_cls, best_objs, best_total = None, [], 0
             for cls_name, objs in class_groups.items():
                 total = await self._count_frames_for_objects(objs)
@@ -115,19 +126,19 @@ class FineTuner:
             if best_total < self.min_samples:
                 logger.info(f"FineTune: '{name_filter}' has only {best_total} frames in dominant class '{best_cls}' (need {self.min_samples})")
                 return None
-            # Merge ALL objects into the dominant class group
             valid = {best_cls: named_objects}
             logger.info(f"FineTune: '{name_filter}' → class '{best_cls}' with {best_total} frames ({len(named_objects)} objects)")
         else:
+            # Combined training: group by user-assigned NAME, each name = one class
             class_groups: dict[str, list[TrackedObject]] = {}
             for obj in named_objects:
-                class_groups.setdefault(obj.class_name, []).append(obj)
+                class_groups.setdefault(obj.name, []).append(obj)
             valid = {}
-            for cls_name, objs in class_groups.items():
+            for name, objs in class_groups.items():
                 total = await self._count_frames_for_objects(objs)
                 if total >= self.min_samples:
-                    valid[cls_name] = objs
-                    logger.info(f"FineTune: class '{cls_name}' has {total} frames from {len(objs)} objects")
+                    valid[name] = objs
+                    logger.info(f"FineTune: name '{name}' has {total} frames from {len(objs)} objects")
 
         if not valid:
             logger.info("FineTune: no class has enough samples (need {})", self.min_samples)
@@ -185,7 +196,7 @@ class FineTuner:
                 shutil.move(str(lbl_dir / lbl_name), str(val_lbl / lbl_name))
 
         dataset_yaml = {
-            "path": str(dataset_dir),
+            "path": ".",
             "train": "train/images",
             "val": "val/images",
             "nc": len(classes_yaml),

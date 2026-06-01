@@ -35,11 +35,6 @@ class YoloDetector:
         self.min_bbox_size = min_bbox_size
 
         local_path = self._find_model(model_path)
-        # Prefer fine-tuned model if available
-        fine_tuned = os.path.join(os.path.dirname(local_path), "fine-tuned.pt")
-        if os.path.isfile(fine_tuned):
-            logger.info(f"YOLO: using fine-tuned model {fine_tuned}")
-            local_path = fine_tuned
         self.model = self._load_model(local_path)
         logger.info(f"YOLO: {os.path.basename(local_path)} device={device} imgsz={imgsz} workers={workers or 'default'} backend={backend}")
 

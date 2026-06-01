@@ -206,7 +206,7 @@ async def main():
                 result = await fine_tuner.train(dataset_dir, epoch_callback=on_epoch)
                 if result:
                     for pl in pipelines:
-                        await pl.reload_detector(result)
+                        await pl.reload_classifier(result)
                     training_state[key] = {"status": "done", "model": result, "finished_at": _local(datetime.now(timezone.utc))}
                 else:
                     training_state[key] = {"status": "failed", "error": "training returned no model", "finished_at": _local(datetime.now(timezone.utc))}
@@ -504,23 +504,13 @@ async def main():
     async def handle_model_reset(request: web.Request) -> web.Response:
         import os
         fine_tuned = Path(settings.get("app", {}).get("models_dir", "/app/models")) / "fine-tuned.pt"
-        if fine_tuned.exists():
-            fine_tuned.unlink()
-            logger.info("Fine-tuned model deleted, reloading base model")
-            for pl in pipelines:
-                base = str(fine_tuned.parent / "ultralytics" / "yolo11m.pt")
-                if not os.path.isfile(base):
-                    base = str(fine_tuned.parent / "yolo11m.pt")
-                await pl.reload_detector(base)
-            return web.json_response({"status": "ok", "message": "Reverted to base model"})
-        return web.json_response({"status": "ok", "message": "No fine-tuned model found"})
-        try:
-            new_settings = load_settings(config_dir)
-            new_cameras_cfg = load_cameras(config_dir)
-            new_triggers_cfg = load_triggers(config_dir)
-        except Exception as e:
-            logger.error(f"Config reload failed: {e}")
-            return web.json_response({"status": "error", "message": str(e)}, status=500)
+        if not fine_tuned.exists():
+            return web.json_response({"status": "ok", "message": "No fine-tuned model found"})
+        fine_tuned.unlink()
+        logger.info("Fine-tuned model deleted, disabling classifier")
+        for pl in pipelines:
+            await pl.reload_classifier(str(fine_tuned))
+        return web.json_response({"status": "ok", "message": "Classifier disabled"})
 
         # Update triggers
         dispatcher.load_triggers(new_triggers_cfg.get("triggers", []))

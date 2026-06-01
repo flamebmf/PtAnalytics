@@ -11,7 +11,7 @@ from loguru import logger
 
 from .capture import StreamReader
 from .motion import MotionDetector, MotionMethod
-from .detection import YoloDetector
+from .detection import YoloDetector, CropClassifier
 from .tracking import DeepSortTracker
 from .recognition import LPRRecognizer, FaceRecognizer, VMRRecognizer
 from .recognition.reid import compute_embedding
@@ -96,6 +96,17 @@ class CameraPipeline:
             enabled=vmr_cfg.get("enabled", True),
         )
 
+        # Crop classifier (fine-tuned on named objects)
+        models_dir = settings.get("app", {}).get("models_dir", "/app/models")
+        fine_tuned_path = os.path.join(os.path.expandvars(models_dir), "fine-tuned.pt")
+        if not os.path.isfile(fine_tuned_path):
+            fine_tuned_path = os.path.join(os.path.dirname(__file__), "..", "training", "fine-tuned.pt")
+        self.crop_classifier = CropClassifier(
+            model_path=fine_tuned_path,
+            confidence=det_cfg.get("confidence", 0.4) * 0.5,
+            imgsz=640,
+        )
+
         self.repo = repository
         self.dispatcher = dispatcher
         self.stats = PipelineStats(camera_id=self.cam_id, camera_name=self.cam_name)
@@ -139,19 +150,8 @@ class CameraPipeline:
         self.stats.started_at = time()
         logger.info(f"Pipeline {self.cam_name} started")
 
-        # Save first-frame snapshot for verification
-        loop = asyncio.get_running_loop()
-        snapshot_frame = await loop.run_in_executor(None, self.reader.read, 5.0)
-        if snapshot_frame is not None:
-            await loop.run_in_executor(
-                None, self.repo.save_snapshot, self.cam_id, snapshot_frame
-            )
-            h, w = snapshot_frame.shape[:2]
-            logger.info(f"Pipeline {self.cam_name}: snapshot saved ({w}x{h})")
-        else:
-            logger.warning(f"Pipeline {self.cam_name}: no frame within 5s, snapshot skipped")
-
         empty_count = 0
+        loop = asyncio.get_running_loop()
         try:
             while not self._stop:
                 _t_read_start = _t_read = time()
@@ -462,6 +462,23 @@ class CameraPipeline:
             except Exception as e:
                 logger.error(f"ReID error: {e}")
 
+        # Fine-tuned crop classifier: if object has no name and is a vehicle,
+        # run its crop through fine-tuned.pt to check for a custom class match
+        if not obj.name and class_name in vehicle_classes and self.crop_classifier.model is not None:
+            try:
+                x1, y1, x2, y2 = bbox
+                crop = frame[y1:y2, x1:x2]
+                if crop.size > 0:
+                    custom_cls, custom_conf = await asyncio.get_running_loop().run_in_executor(
+                        None, self.crop_classifier.classify, crop
+                    )
+                    if custom_cls and custom_conf >= 0.3:
+                        obj.name = custom_cls
+                        await self.repo.update_object_name(obj.id, custom_cls)
+                        logger.info(f"[{self.cam_name}] Fine-tuned: track {track_id} → '{custom_cls}' ({custom_conf:.3f})")
+            except Exception as e:
+                logger.error(f"Crop classifier error: {e}")
+
         # Entry crop for dataset collection
         if self.crop_enabled:
             try:
@@ -564,23 +581,31 @@ class CameraPipeline:
         self._stop = True
         self.reader.stop()
 
-    async def reload_detector(self, model_path: str):
-        """Hot-reload detector model after fine-tuning."""
+    async def reload_classifier(self, model_path: str):
+        """Hot-reload crop classifier after fine-tuning."""
         from pathlib import Path
         path = str(Path(model_path).resolve())
-        logger.info(f"[{self.cam_name}] Reloading detector model: {path}")
+        logger.info(f"[{self.cam_name}] Reloading classifier: {path}")
+        if not os.path.isfile(path):
+            self.crop_classifier.model = None
+            logger.info(f"[{self.cam_name}] Classifier disabled (model not found)")
+            return
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, self._reload_model_sync, path)
+        await loop.run_in_executor(None, self._reload_classifier_sync, path)
 
-    def _reload_model_sync(self, model_path: str):
+    def _reload_classifier_sync(self, model_path: str):
         from ultralytics import YOLO
-        old_model = self.detector.model
         try:
-            self.detector.model = YOLO(model_path)
-            logger.info(f"[{self.cam_name}] Detector model reloaded")
+            self.crop_classifier.model = YOLO(model_path)
+            self.crop_classifier.names = self.crop_classifier.model.names
+            logger.info(f"[{self.cam_name}] Classifier reloaded: {len(self.crop_classifier.names)} classes")
         except Exception as e:
-            logger.error(f"[{self.cam_name}] Model reload failed: {e}")
-            self.detector.model = old_model
+            logger.error(f"[{self.cam_name}] Classifier reload failed: {e}")
+
+    async def reload_detector(self, model_path: str):
+        """Hot-reload detector model after fine-tuning."""
+        logger.info(f"[{self.cam_name}] reload_detector is deprecated for fine-tuned models")
+        logger.info(f"[{self.cam_name}] Use reload_classifier instead for fine-tuned.pt")
 
     async def reconfigure(self, camera_config: dict, settings: dict):
         """Update detector, tracker, motion settings from new config without restarting."""

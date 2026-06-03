@@ -1,5 +1,7 @@
 # Copyright (c) 2026 PlurumTech.com
 # SPDX-License-Identifier: GPL-3.0-only
+import os
+from pathlib import Path
 from typing import Optional
 import numpy as np
 from loguru import logger
@@ -17,9 +19,10 @@ class VMRRecognizer:
         "Gazelle", "KAMAZ", "MAN", "Scania", "DAF", "Volvo Truck",
     ]
 
-    def __init__(self, min_confidence: float = 0.3, enabled: bool = True):
+    def __init__(self, min_confidence: float = 0.3, enabled: bool = True, model_dir: Optional[str] = None):
         self.min_confidence = min_confidence
         self.enabled = enabled
+        self.model_dir = model_dir
         self._model = None
         self._processor = None
         self._texts_encoded = None
@@ -27,11 +30,14 @@ class VMRRecognizer:
     def _ensure_model(self):
         if self._model is None and self.enabled:
             try:
+                cache_dir = str(Path(self.model_dir) / "huggingface") if self.model_dir else None
+                if cache_dir:
+                    os.environ.setdefault("TRANSFORMERS_CACHE", cache_dir)
                 from transformers import CLIPModel, CLIPProcessor
                 import torch
                 model_name = "openai/clip-vit-base-patch32"
-                self._model = CLIPModel.from_pretrained(model_name)
-                self._processor = CLIPProcessor.from_pretrained(model_name)
+                self._model = CLIPModel.from_pretrained(model_name, cache_dir=cache_dir)
+                self._processor = CLIPProcessor.from_pretrained(model_name, cache_dir=cache_dir)
                 device = "cuda" if torch.cuda.is_available() else "cpu"
                 self._model.to(device)
                 self._model.eval()

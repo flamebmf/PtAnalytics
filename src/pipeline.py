@@ -94,9 +94,11 @@ class CameraPipeline:
         )
 
         vmr_cfg = settings.get("vmr", {})
+        models_dir = settings.get("app", {}).get("models_dir", "/app/models")
         self.vmr = VMRRecognizer(
             min_confidence=vmr_cfg.get("min_confidence", 0.3),
             enabled=vmr_cfg.get("enabled", True),
+            model_dir=models_dir,
         )
 
         # Crop classifier (fine-tuned on named objects)

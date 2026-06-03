@@ -1,18 +1,32 @@
 # Copyright (c) 2026 PlurumTech.com
 # SPDX-License-Identifier: GPL-3.0-only
-"""Train YOLO on combined dataset, produce fine-tuned.pt with all custom classes."""
+"""Train YOLO on combined dataset, produce fine-tuned.pt with all custom classes.
+Usage:
+  python tools/train_yolo.py [dataset.zip] [imgsz] [--force]
+  python tools/train_yolo.py --imgsz 640 --force
+"""
 import sys, shutil, json, torch, yaml, zipfile
 from pathlib import Path
 from datetime import datetime
 from ultralytics import YOLO
 
-BASE = Path(__file__).parent
+BASE = Path.cwd()
 MODELS = BASE / "models"
 STATE_FILE = BASE / ".train-state.json"
 
-IMGSZ = int(sys.argv[1]) if len(sys.argv) > 1 else 640
+ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
+FLAGS = [a for a in sys.argv[1:] if a.startswith("--")]
+
+ZIP_PATH = None
+for a in ARGS:
+    if a.endswith(".zip"):
+        ZIP_PATH = Path(a)
+        ARGS.remove(a)
+        break
+
+IMGSZ = int(ARGS[0]) if ARGS else 640
 BATCH = 2 if IMGSZ >= 1280 else 8
-FORCE = "--force" in sys.argv
+FORCE = "--force" in FLAGS
 
 BASE_MODEL = "yolo11m.pt"
 DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -20,11 +34,16 @@ state = {}
 if STATE_FILE.exists():
     state = json.loads(STATE_FILE.read_text())
 
-# Auto-extract ZIP if present (always overwrites existing folder)
+# Auto-extract ZIP
 dataset_dir = BASE / "extracted" / "combined" / "fine-tune-data"
 dataset_yaml = dataset_dir / "dataset.yaml"
 extracted_dir = BASE / "extracted"
-zips = list(extracted_dir.glob("*.zip")) + list(BASE.glob("combined*.zip"))
+
+zips = []
+if ZIP_PATH and ZIP_PATH.exists():
+    zips = [ZIP_PATH]
+zips += list(extracted_dir.glob("*.zip")) + list(BASE.glob("combined*.zip")) + list(BASE.glob("dataset-*.zip"))
+
 if zips:
     zip_path = zips[0]
     print(f"Found ZIP: {zip_path}, extracting...")
@@ -86,7 +105,6 @@ if best.exists():
             print(f"ERROR: copy to {dst2} also failed: {e2}")
     state["combined"] = {"date": datetime.now().isoformat(), "imgsz": IMGSZ}
     STATE_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False))
-    # Clean up old per-name artifacts
     for name_dir in ["im", "lena", "mazda"]:
         p = MODELS / name_dir
         if p.exists():

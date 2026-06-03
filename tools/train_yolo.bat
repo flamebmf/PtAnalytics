@@ -29,10 +29,10 @@ echo  0  Exit
 echo.
 set /p choice="Choose [0-7]: "
 
-if "%choice%"=="1" %PY% train.py 640
-if "%choice%"=="2" %PY% train.py 1280
-if "%choice%"=="3" %PY% train.py 640 --force
-if "%choice%"=="4" %PY% train.py 1280 --force
+if "%choice%"=="1" %PY% train_yolo.py 640
+if "%choice%"=="2" %PY% train_yolo.py 1280
+if "%choice%"=="3" %PY% train_yolo.py 640 --force
+if "%choice%"=="4" %PY% train_yolo.py 1280 --force
 if "%choice%"=="5" %PY% -c "import json; s=json.load(open('.train-state.json')); print('\nTrained:'); [print(f'  {k}: {v[\"date\"]} @ {v.get(\"imgsz\",\"?\")}px') for k,v in s.items()] if s else print('  nothing yet')"
 if "%choice%"=="6" goto download_and_train
 if "%choice%"=="7" goto cleanup
@@ -51,7 +51,7 @@ os.makedirs('extracted', exist_ok=True)
 urllib.request.urlretrieve(url, zip_path)
 print(f'Downloaded to {zip_path}')
 " "!server_url!"
-%PY% train.py 640 --force
+%PY% train_yolo.py 640 --force
 pause
 goto menu
 

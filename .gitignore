@@ -23,6 +23,16 @@ training/yolo*.pt
 training/fine-tuned-*.pt
 training/.train-state.json
 
+# Tools output
+tools/extracted/
+tools/models/
+tools/dataset-*.zip
+tools/combined*.zip
+tools/.train-state.json
+tools/fine-tuned*.pt
+tools/auto_assign_export.zip
+tools/auto_assign_data/
+
 # Local config overrides (keep .example files tracked)
 config/*.yaml
 !config/*.yaml.example

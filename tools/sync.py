@@ -104,9 +104,9 @@ def cmd_train(args):
 
     # Step 3: run local training
     print("Running training (this may take a while)...")
-    train_script = Path(__file__).resolve().parent.parent / "training" / "train.py"
+    train_script = Path(__file__).resolve().parent / "train_yolo.py"
     if not train_script.exists():
-        train_script = Path(__file__).resolve().parent.parent / "training" / "train.bat"
+        train_script = Path(__file__).resolve().parent / "train_yolo.bat"
     result = subprocess.run(
         [sys.executable, str(train_script), str(dataset_zip)],
         cwd=str(out_dir),

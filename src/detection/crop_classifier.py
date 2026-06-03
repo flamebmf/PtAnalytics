@@ -36,10 +36,11 @@ class CropClassifier:
             conf=self.confidence,
             imgsz=self.imgsz,
             verbose=False,
+            max_det=1,
         )
         if results[0].boxes is not None and len(results[0].boxes) > 0:
-            box = results[0].boxes[0]
-            cls_id = int(box.cls[0])
-            conf = float(box.conf[0])
+            best = max(results[0].boxes, key=lambda b: float(b.conf[0]))
+            cls_id = int(best.cls[0])
+            conf = float(best.conf[0])
             return self.names[cls_id], conf
         return None, 0.0

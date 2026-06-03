@@ -692,6 +692,7 @@ async def main():
     health_app.router.add_get("/auto-assign/export", handle_auto_assign_export)
     health_app.router.add_post("/auto-assign/upload", handle_auto_assign_upload)
 
+    health_app.router.add_get("/objects", handle_list_objects)
     health_app.router.add_get("/objects/names", handle_list_names)
     health_app.router.add_get("/objects/dates", handle_objects_dates)
     health_app.router.add_get("/filters", handle_filters)

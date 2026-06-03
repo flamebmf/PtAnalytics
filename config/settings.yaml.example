@@ -38,7 +38,7 @@ detector:
   workers: 4
   backend: torch
   classes: [0, 1, 2, 3, 5, 7]
-  min_bbox_size: 15
+  min_bbox_size: 40
 
 tracker:
   max_age: 30

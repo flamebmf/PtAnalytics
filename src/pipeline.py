@@ -67,7 +67,7 @@ class CameraPipeline:
             imgsz=cam_det.get("imgsz", det_cfg.get("imgsz", 640)),
             workers=cam_det.get("workers", det_cfg.get("workers")),
             backend=cam_det.get("backend", det_cfg.get("backend", "torch")),
-            min_bbox_size=cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 15)),
+                min_bbox_size=cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40)),
         )
 
         # Tracker
@@ -626,7 +626,7 @@ class CameraPipeline:
                 imgsz=cam_det.get("imgsz", det_cfg.get("imgsz", 1280)),
                 workers=cam_det.get("workers", det_cfg.get("workers")),
                 backend=new_backend,
-                min_bbox_size=cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 15)),
+            min_bbox_size=cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40)),
             )
         else:
             self.detector.confidence = cam_det.get("confidence", det_cfg.get("confidence", 0.6))

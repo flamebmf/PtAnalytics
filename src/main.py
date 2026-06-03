@@ -301,6 +301,10 @@ async def main():
         ]
         return web.json_response({"total": total, "limit": limit, "offset": offset, "items": items})
 
+    async def handle_objects_dates(request: web.Request) -> web.Response:
+        dates = await repository.get_available_dates()
+        return web.json_response(dates)
+
     async def handle_get_object(request: web.Request) -> web.Response:
         obj_id = uuid.UUID(request.match_info["id"])
         async with await get_session() as session:
@@ -689,6 +693,7 @@ async def main():
     health_app.router.add_post("/auto-assign/upload", handle_auto_assign_upload)
 
     health_app.router.add_get("/objects/names", handle_list_names)
+    health_app.router.add_get("/objects/dates", handle_objects_dates)
     health_app.router.add_get("/filters", handle_filters)
     health_app.router.add_get("/config", handle_get_config)
     health_app.router.add_put("/config", handle_put_config)

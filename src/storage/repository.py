@@ -766,6 +766,21 @@ class StorageRepository:
             await session.commit()
         return count
 
+    async def get_available_dates(self) -> list[dict]:
+        async with await get_session() as session:
+            from sqlalchemy import func, cast, Date
+            result = await session.execute(
+                select(
+                    cast(TrackedObject.last_seen, Date).label("date"),
+                    func.count().label("count"),
+                )
+                .where(TrackedObject.ignored != True)
+                .group_by(cast(TrackedObject.last_seen, Date))
+                .order_by(cast(TrackedObject.last_seen, Date).desc())
+                .limit(365)
+            )
+            return [{"date": str(row[0]), "count": row[1]} for row in result.all()]
+
     async def get_unnamed_objects(self) -> list[TrackedObject]:
         async with await get_session() as session:
             result = await session.execute(

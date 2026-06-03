@@ -101,13 +101,22 @@ input[list]:focus { border-color: var(--accent); }
 }
 .live-preview .info { font-size: .9rem; line-height: 1.5; flex: 1; }
 .live-preview .info .name { font-size: 1.1rem; }
-.date-filter-wrap { flex-shrink: 0; margin-left: auto; }
-.date-filter-wrap input[type="date"] {
-  color-scheme: dark; background: rgba(255,255,255,.05);
-  border: 1px solid rgba(255,255,255,.12); border-radius: 6px;
-  color: var(--text); padding: 4px 6px; font-size: .8rem;
+.date-filter-wrap { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,.06); }
+.date-filter-wrap .cal-month-nav { margin-bottom: 4px; }
+.date-filter-wrap .cal-month-label { font-size: .75rem; font-weight: 600; color: var(--text); white-space: nowrap; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; width: 100%; max-width: 240px; }
+.cal-grid .cal-dow { font-size: .6rem; color: var(--muted); text-align: center; padding: 2px 0; font-weight: 600; }
+.cal-grid .cal-day {
+  text-align: center; font-size: .7rem; padding: 3px 0; border-radius: 4px;
+  cursor: pointer; color: var(--text); position: relative; line-height: 1.2;
+  background: rgba(255,255,255,.03); transition: background .15s;
 }
-.date-filter-wrap input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.7); cursor: pointer; }
+.cal-grid .cal-day:hover { background: rgba(0,212,255,.12); }
+.cal-grid .cal-day.cal-other { color: rgba(255,255,255,.2); }
+.cal-grid .cal-day.cal-selected { background: var(--accent); color: #04070d; font-weight: 700; }
+.cal-grid .cal-day.cal-today { border: 1px solid var(--accent); box-shadow: 0 0 6px rgba(0,212,255,.3); }
+.cal-grid .cal-day .cal-dot { display: block; width: 4px; height: 4px; border-radius: 50%; background: #7b61ff; margin: 1px auto 0; }
+.cal-grid .cal-day.cal-selected .cal-dot { background: #04070d; }
 /* Table */
 .main-table-col {
   flex-grow: 1; display: flex; flex-direction: column;
@@ -222,8 +231,9 @@ input::placeholder, select option { color: var(--muted) !important; }
   .frame-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   .frame-card img { height: auto; max-height: 120px; object-fit: contain; background: #000; }
   .detail-scroll { max-height: none; }
-  .date-filter-wrap { flex-direction: row !important; margin-left: 0; width: 100%; justify-content: flex-start !important; }
-  .date-filter-wrap input { width: 100% !important; }
+  .date-filter-wrap { padding: 6px 8px; }
+  .cal-grid { max-width: 100%; }
+  .cal-grid .cal-day { font-size: .65rem; padding: 2px 0; }
 }
 /* View info card (above table in view mode) */
 .view-info-card {
@@ -290,10 +300,6 @@ input::placeholder, select option { color: var(--muted) !important; }
           <div style="color:var(--muted);font-size:.8rem">Точность — <span id="live-conf">—</span></div>
           <div style="color:var(--muted);font-size:.8rem"><span id="live-face">—</span> · <span id="live-plate">—</span> · <span id="live-vmr">—</span></div>
         </div>
-        <div class="date-filter-wrap d-flex flex-column align-items-center justify-content-center px-2" id="date-filter-wrap">
-          <input type="date" id="filter-date" style="width:140px" onchange="onDateChange()">
-          <span style="color:var(--muted);font-size:.65rem;margin-top:2px">дата</span>
-        </div>
       </div>
       <div class="main-table-col">
         <div class="view-info-card d-none" id="view-info-card">
@@ -316,6 +322,16 @@ input::placeholder, select option { color: var(--muted) !important; }
           <button class="btn-neon-fill py-0" onclick="loadObjects(0)">Поиск</button>
           <button class="btn-muted py-0" onclick="resetFilters()">Сброс</button>
           <span style="color:var(--muted);font-size:.75rem" id="obj-count">—</span>
+        </div>
+        <div class="date-filter-wrap" id="date-filter-wrap">
+          <div class="cal-month-nav d-flex align-items-center gap-2 w-100">
+            <button class="btn-muted btn-xs cal-prev" onclick="calPrevMonth()">&lt;</button>
+            <span class="cal-month-label flex-grow-1 text-center">—</span>
+            <button class="btn-muted btn-xs cal-next" onclick="calNextMonth()">&gt;</button>
+            <button class="btn-muted btn-xs cal-today" onclick="calGoToday()" title="Сегодня">•</button>
+            <button class="btn-muted btn-xs cal-clear" onclick="calClear()" title="Все даты">✕</button>
+          </div>
+          <div class="cal-grid" id="cal-grid"></div>
         </div>
         <div class="table-cam" id="table-wrapper">
           <div class="table-responsive">
@@ -459,7 +475,7 @@ function saveFilters() {
     sort: document.getElementById('filter-sort').value,
     group: document.getElementById('group-by-name').checked,
     ignored: document.getElementById('show-ignored').checked,
-    date: document.getElementById('filter-date').value,
+    date: window.selectedDate || '',
   })); } catch {}
 }
 function restoreFilters() {
@@ -472,7 +488,7 @@ function restoreFilters() {
     if (v.sort) document.getElementById('filter-sort').value = v.sort;
     document.getElementById('group-by-name').checked = !!v.group;
     document.getElementById('show-ignored').checked = !!v.ignored;
-    if (v.date) document.getElementById('filter-date').value = v.date;
+    if (v.date) window.selectedDate = v.date;
   } catch {}
 }
 function resetFilters() {
@@ -482,13 +498,117 @@ function resetFilters() {
   document.getElementById('filter-sort').value = '-last_seen';
   document.getElementById('group-by-name').checked = false;
   document.getElementById('show-ignored').checked = false;
-  document.getElementById('filter-date').value = '';
+  window.selectedDate = '';
   saveFilters();
   loadObjects(0);
 }
 function onDateChange() {
   saveFilters();
   loadObjects(0);
+}
+
+// ── Calendar widget ──────────────────────────────────────────────────
+let calDate = new Date();
+window.selectedDate = '';
+let calAvailable = {};
+
+async function loadCalDates() {
+  try {
+    const r = await fetch('/objects/dates');
+    const dates = await r.json();
+    calAvailable = {};
+    for (const d of dates) {
+      calAvailable[d.date] = d.count;
+    }
+  } catch {}
+  renderCal();
+}
+
+function renderCal() {
+  const grid = document.getElementById('cal-grid');
+  if (!grid) return;
+  const year = calDate.getFullYear();
+  const month = calDate.getMonth();
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startPad = firstDay.getDay(); // 0=Sun
+  const daysInMonth = lastDay.getDate();
+
+  document.querySelector('.cal-month-label').textContent =
+    firstDay.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+
+  let html = '';
+  const dow = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+  for (const d of dow) html += `<div class="cal-dow">${d}</div>`;
+
+  // Previous month padding days
+  const prevLast = new Date(year, month, 0).getDate();
+  for (let i = startPad - 1; i >= 0; i--) {
+    const d = prevLast - i;
+    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    html += `<div class="cal-day cal-other" data-date="${dateStr}" onclick="calPick('${dateStr}')">${d}</div>`;
+  }
+
+  // Current month days
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === d;
+    const isSelected = window.selectedDate === dateStr;
+    const hasData = calAvailable[dateStr];
+    let cls = 'cal-day';
+    if (isToday) cls += ' cal-today';
+    if (isSelected) cls += ' cal-selected';
+    html += `<div class="${cls}" data-date="${dateStr}" onclick="calPick('${dateStr}')">${d}`;
+    if (hasData) html += '<span class="cal-dot"></span>';
+    html += '</div>';
+  }
+
+  // Next month padding
+  const totalCells = startPad + daysInMonth;
+  const endPad = 7 - (totalCells % 7 || 7);
+  for (let d = 1; d <= endPad && endPad < 7; d++) {
+    const dateStr = `${year}-${String(month+2).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    html += `<div class="cal-day cal-other" data-date="${dateStr}" onclick="calPick('${dateStr}')">${d}</div>`;
+  }
+
+  grid.innerHTML = html;
+}
+
+function calPick(dateStr) {
+  window.selectedDate = dateStr === window.selectedDate ? '' : dateStr;
+  saveFilters();
+  loadObjects(0);
+  renderCal();
+}
+
+function calPrevMonth() {
+  calDate.setMonth(calDate.getMonth() - 1);
+  renderCal();
+}
+
+function calNextMonth() {
+  calDate.setMonth(calDate.getMonth() + 1);
+  renderCal();
+}
+
+function calGoToday() {
+  calDate = new Date();
+  const y = calDate.getFullYear();
+  const m = String(calDate.getMonth() + 1).padStart(2, '0');
+  const d = String(calDate.getDate()).padStart(2, '0');
+  window.selectedDate = y + '-' + m + '-' + d;
+  renderCal();
+  saveFilters();
+  loadObjects(0);
+}
+
+function calClear() {
+  window.selectedDate = '';
+  saveFilters();
+  loadObjects(0);
+  renderCal();
 }
 
 async function loadFilterOptions() {
@@ -524,8 +644,7 @@ async function loadObjects(offset) {
   if (sort !== '-last_seen') params.set('sort', sort);
   if (document.getElementById('show-ignored').checked) params.set('show_ignored', '1');
   if (groupByName) params.set('grouped', '1');
-  const dateVal = document.getElementById('filter-date').value;
-  if (dateVal) params.set('date', dateVal);
+  if (window.selectedDate) params.set('date', window.selectedDate);
 
   const tbody = document.getElementById('obj-tbody');
   tbody.innerHTML = '<tr><td colspan="4" class="text-center" style="color:var(--muted)">загрузка…</td></tr>';
@@ -1581,6 +1700,8 @@ async function init() {
   } catch {}
   loadHealth();
   loadFilterOptions();
+  renderCal();
+  loadCalDates();
   loadLive();
   for (const id of ['filter-camera','filter-class','filter-name'])
     document.getElementById(id).addEventListener('change', saveFilters);

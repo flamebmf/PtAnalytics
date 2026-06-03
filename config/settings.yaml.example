@@ -33,16 +33,17 @@ detector:
   model: yolo11m.pt
   device: cpu
   confidence: 0.35
-  iou: 0.45
+  iou: 0.7
   imgsz: 640
   workers: 4
   backend: torch
   classes: [0, 1, 2, 3, 5, 7]
-  min_bbox_size: 40
+  min_bbox_size: 15
 
 tracker:
   max_age: 30
   n_init: 3
+  iou_threshold: 0.3
   nn_budget: 100
   depart_timeout: 10.0
   frame_buffer_size: 30

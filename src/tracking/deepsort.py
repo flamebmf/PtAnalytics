@@ -112,10 +112,11 @@ def iou(bb1: tuple, bb2: tuple) -> float:
 class DeepSortTracker:
     """Multi-object tracker using Kalman filters + IoU matching."""
 
-    def __init__(self, max_age: int = 30, n_init: int = 3, nn_budget: int = 100):
+    def __init__(self, max_age: int = 30, n_init: int = 3, nn_budget: int = 100, iou_threshold: float = 0.3):
         self.max_age = max_age
         self.n_init = n_init
         self.nn_budget = nn_budget
+        self.iou_threshold = iou_threshold
         self.trackers: list[KalmanBoxTracker] = []
         self._next_id = 0
 
@@ -137,7 +138,6 @@ class DeepSortTracker:
             trk_bboxes = [t.get_state() for t in self.trackers]
 
             # Build per-class IoU sub-matrices so tracks never match wrong class
-            iou_threshold = 0.5
             used_dets = set()
             used_trks = set()
 
@@ -146,7 +146,7 @@ class DeepSortTracker:
                     continue
                 det_class = det["class_id"]
                 best_idx = -1
-                best_iou = iou_threshold
+                best_iou = self.iou_threshold
                 for t_idx, trk in enumerate(self.trackers):
                     if t_idx in used_trks:
                         continue
@@ -205,7 +205,7 @@ class DeepSortTracker:
             trk = KalmanBoxTracker(det["bbox"], class_id=det["class_id"], class_name=det["class_name"])
             self.trackers.append(trk)
 
-        max_missed = max(1, self.max_age // 10)
+        max_missed = max(2, self.max_age // 5)
         results = []
         remaining = []
         for trk in self.trackers:
@@ -213,7 +213,7 @@ class DeepSortTracker:
                 is_confirmed = trk.hits >= self.n_init
                 conf = 0.0
                 for det in detections:
-                    if iou(det["bbox"], tuple(trk.get_state())) > 0.5:
+                    if iou(det["bbox"], tuple(trk.get_state())) > self.iou_threshold:
                         conf = det["confidence"]
                         break
                 if len(trk._class_votes) > 1:

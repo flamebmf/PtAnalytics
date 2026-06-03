@@ -67,7 +67,7 @@ class CameraPipeline:
             imgsz=cam_det.get("imgsz", det_cfg.get("imgsz", 640)),
             workers=cam_det.get("workers", det_cfg.get("workers")),
             backend=cam_det.get("backend", det_cfg.get("backend", "torch")),
-            min_bbox_size=cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 20)),
+            min_bbox_size=cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 15)),
         )
 
         # Tracker
@@ -76,6 +76,7 @@ class CameraPipeline:
             max_age=trk_cfg.get("max_age", 30),
             n_init=trk_cfg.get("n_init", 3),
             nn_budget=trk_cfg.get("nn_budget", 100),
+            iou_threshold=trk_cfg.get("iou_threshold", 0.3),
         )
 
         # Recognizers
@@ -620,16 +621,16 @@ class CameraPipeline:
                 model_path=new_model,
                 device=new_device,
                 confidence=cam_det.get("confidence", det_cfg.get("confidence", 0.6)),
-                iou=cam_det.get("iou", det_cfg.get("iou", 0.45)),
+                iou=cam_det.get("iou", det_cfg.get("iou", 0.7)),
                 classes=cam_det.get("classes", det_cfg.get("classes")),
                 imgsz=cam_det.get("imgsz", det_cfg.get("imgsz", 1280)),
                 workers=cam_det.get("workers", det_cfg.get("workers")),
                 backend=new_backend,
-                min_bbox_size=cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40)),
+                min_bbox_size=cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 15)),
             )
         else:
             self.detector.confidence = cam_det.get("confidence", det_cfg.get("confidence", 0.6))
-            self.detector.iou = cam_det.get("iou", det_cfg.get("iou", 0.45))
+            self.detector.iou = cam_det.get("iou", det_cfg.get("iou", 0.7))
             self.detector.classes = cam_det.get("classes", det_cfg.get("classes"))
             self.detector.imgsz = cam_det.get("imgsz", det_cfg.get("imgsz", 1280))
             self.detector.min_bbox_size = cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40))
@@ -645,6 +646,7 @@ class CameraPipeline:
         trk_cfg = settings.get("tracker", {})
         self.tracker.max_age = trk_cfg.get("max_age", 30)
         self.tracker.n_init = trk_cfg.get("n_init", 3)
+        self.tracker.iou_threshold = trk_cfg.get("iou_threshold", 0.3)
         self.track_depart_timeout = trk_cfg.get("depart_timeout", 3.0)
 
         # -- LPR --

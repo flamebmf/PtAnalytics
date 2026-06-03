@@ -1,0 +1,6 @@
+# CLIP dependencies for auto-assignment (run locally on GPU machine)
+torch>=2.0.0
+torchvision>=0.15.0
+git+https://github.com/openai/CLIP.git
+Pillow>=10.0.0
+numpy>=1.24.0

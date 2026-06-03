@@ -50,3 +50,6 @@ docker-compose.override.yml
 # Runtime
 *.pid
 *.sock
+
+# Sync tool output
+tools-output/

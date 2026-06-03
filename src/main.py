@@ -586,7 +586,108 @@ async def main():
     health_app.router.add_post("/config/reload", handle_config_reload)
     health_app.router.add_post("/model/reset", handle_model_reset)
 
-    health_app.router.add_get("/objects", handle_list_objects)
+    async def handle_training_upload(request: web.Request) -> web.Response:
+        reader = await request.multipart()
+        field = await reader.next()
+        if field is None or field.name != "model":
+            return web.json_response({"error": "missing model file"}, status=400)
+        model_path = Path(settings.get("app", {}).get("models_dir", "/app/models")) / "fine-tuned.pt"
+        with open(model_path, "wb") as f:
+            while True:
+                chunk = await field.read_chunk(8192)
+                if not chunk:
+                    break
+                f.write(chunk)
+        logger.info("Fine-tuned model uploaded, reloading classifier")
+        for pl in pipelines:
+            await pl.reload_classifier(str(model_path))
+        return web.json_response({"status": "ok", "path": str(model_path)})
+
+    async def handle_backup(request: web.Request) -> web.Response:
+        import io, zipfile, json
+        objects_data = await repository.backup_all_objects()
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("objects.json", json.dumps(objects_data, indent=2, ensure_ascii=False))
+            model_path = Path(settings.get("app", {}).get("models_dir", "/app/models")) / "fine-tuned.pt"
+            if model_path.exists():
+                zf.write(str(model_path), "fine-tuned.pt")
+        buf.seek(0)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return web.Response(body=buf.read(), content_type="application/zip",
+                            headers={"Content-Disposition": f'attachment; filename="backup_{ts}.zip"'})
+
+    async def handle_backup_restore(request: web.Request) -> web.Response:
+        import io, zipfile, json
+        reader = await request.multipart()
+        field = await reader.next()
+        if field is None:
+            return web.json_response({"error": "missing file"}, status=400)
+        buf = io.BytesIO()
+        while True:
+            chunk = await field.read_chunk(8192)
+            if not chunk:
+                break
+            buf.write(chunk)
+        buf.seek(0)
+        with zipfile.ZipFile(buf) as zf:
+            objects_data = json.loads(zf.read("objects.json"))
+        count = await repository.restore_objects(objects_data)
+        logger.info(f"Restored {count} objects from backup")
+        return web.json_response({"status": "ok", "restored": count})
+
+    async def handle_auto_assign_export(request: web.Request) -> web.Response:
+        import io, zipfile, json
+        named_objs = await repository.get_named_objects()
+        unnamed_objs = await repository.get_unnamed_objects()
+        data_dir_path = Path(settings.get("app", {}).get("data_dir", "/data/frames"))
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            manifest = {"references": {}, "unlabeled": []}
+            seen_names = {}
+            for obj in named_objs:
+                name = obj.name
+                if name not in seen_names:
+                    seen_names[name] = 0
+                seen_names[name] += 1
+                if seen_names[name] > 5:
+                    continue
+                frames = await repository.list_frames(obj.id, limit=1)
+                for f in frames:
+                    if f.image_path:
+                        img_path = Path(f.image_path)
+                        if img_path.exists():
+                            arcname = f"references/{name}/{obj.id}_{f.id}.jpg"
+                            zf.write(str(img_path), arcname)
+                            manifest["references"].setdefault(name, []).append(arcname)
+            for obj in unnamed_objs:
+                frames = await repository.list_frames(obj.id, limit=1)
+                for f in frames:
+                    if f.image_path:
+                        img_path = Path(f.image_path)
+                        if img_path.exists():
+                            arcname = f"unlabeled/{obj.id}_{f.id}.jpg"
+                            zf.write(str(img_path), arcname)
+                            manifest["unlabeled"].append({"arcname": arcname, "object_id": str(obj.id), "class_name": obj.class_name})
+            zf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
+        buf.seek(0)
+        return web.Response(body=buf.read(), content_type="application/zip",
+                            headers={"Content-Disposition": 'attachment; filename="auto_assign_export.zip"'})
+
+    async def handle_auto_assign_upload(request: web.Request) -> web.Response:
+        import json
+        body = await request.json()
+        assignments = body.get("assignments", {})
+        count = await repository.auto_assign_names(assignments)
+        logger.info(f"Auto-assigned {count} objects")
+        return web.json_response({"status": "ok", "assigned": count})
+
+    health_app.router.add_post("/training/upload", handle_training_upload)
+    health_app.router.add_get("/backup", handle_backup)
+    health_app.router.add_post("/backup/restore", handle_backup_restore)
+    health_app.router.add_get("/auto-assign/export", handle_auto_assign_export)
+    health_app.router.add_post("/auto-assign/upload", handle_auto_assign_upload)
+
     health_app.router.add_get("/objects/names", handle_list_names)
     health_app.router.add_get("/filters", handle_filters)
     health_app.router.add_get("/config", handle_get_config)

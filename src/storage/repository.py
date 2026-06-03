@@ -725,6 +725,88 @@ class StorageRepository:
                 obj.embedding = embedding
                 await session.commit()
 
+    async def backup_all_objects(self) -> list[dict]:
+        async with await get_session() as session:
+            result = await session.execute(select(TrackedObject))
+            rows = []
+            for obj in result.scalars().all():
+                rows.append({
+                    "id": str(obj.id),
+                    "camera_id": obj.camera_id,
+                    "track_id": obj.track_id,
+                    "class_name": obj.class_name,
+                    "name": obj.name,
+                    "ignored": obj.ignored,
+                    "plate_number": obj.plate_number,
+                    "face_id": obj.face_id,
+                    "metadata_": obj.metadata_,
+                    "first_seen": obj.first_seen.isoformat() if obj.first_seen else None,
+                    "last_seen": obj.last_seen.isoformat() if obj.last_seen else None,
+                    "appearance_count": obj.appearance_count,
+                })
+            return rows
+
+    async def restore_objects(self, objects_data: list[dict]) -> int:
+        count = 0
+        async with await get_session() as session:
+            for data in objects_data:
+                result = await session.execute(
+                    select(TrackedObject).where(TrackedObject.id == uuid.UUID(data["id"]))
+                )
+                obj = result.scalar_one_or_none()
+                if obj is None:
+                    continue
+                obj.name = data.get("name")
+                obj.class_name = data.get("class_name", obj.class_name)
+                obj.ignored = data.get("ignored", obj.ignored)
+                obj.plate_number = data.get("plate_number")
+                obj.face_id = data.get("face_id")
+                obj.metadata_ = data.get("metadata_")
+                count += 1
+            await session.commit()
+        return count
+
+    async def get_unnamed_objects(self) -> list[TrackedObject]:
+        async with await get_session() as session:
+            result = await session.execute(
+                select(TrackedObject)
+                .where(
+                    (TrackedObject.name.is_(None)) | (TrackedObject.name == "")
+                )
+                .where(TrackedObject.ignored != True)
+                .order_by(TrackedObject.last_seen.desc())
+            )
+            return list(result.scalars().all())
+
+    async def get_named_objects(self) -> list[TrackedObject]:
+        async with await get_session() as session:
+            result = await session.execute(
+                select(TrackedObject)
+                .where(TrackedObject.name.isnot(None))
+                .where(TrackedObject.name != "")
+                .where(TrackedObject.ignored != True)
+                .order_by(TrackedObject.name)
+            )
+            return list(result.scalars().all())
+
+    async def auto_assign_names(self, assignments: dict[str, str]) -> int:
+        count = 0
+        async with await get_session() as session:
+            for obj_id_str, name in assignments.items():
+                try:
+                    result = await session.execute(
+                        select(TrackedObject).where(TrackedObject.id == uuid.UUID(obj_id_str))
+                    )
+                    obj = result.scalar_one_or_none()
+                    if obj is None or not name:
+                        continue
+                    obj.name = name
+                    count += 1
+                except Exception:
+                    pass
+            await session.commit()
+        return count
+
     async def list_object_names(self) -> list[dict]:
         async with await get_session() as session:
             from sqlalchemy import func

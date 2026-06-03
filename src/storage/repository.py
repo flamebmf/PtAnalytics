@@ -550,7 +550,7 @@ class StorageRepository:
                 "timestamp": fc.timestamp.isoformat() if fc.timestamp else None,
                 "face_id": obj.face_id,
                 "plate_number": obj.plate_number,
-                "vmr_brand": (obj.metadata_ or {}).get("vmr_brand"),
+                "vmr_brand": (obj.metadata_ or {}).get("vmr"),
             }
 
     async def list_objects(

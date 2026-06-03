@@ -1354,6 +1354,7 @@ function renderTrackerFields(t) {
   return `
     <div class="col-3"><label>max_age <input type="number" id="cfg-trk-max-age" value="${t.max_age || 30}" class="form-control form-control-sm"></label></div>
     <div class="col-3"><label>n_init <input type="number" id="cfg-trk-n-init" value="${t.n_init || 3}" class="form-control form-control-sm"></label></div>
+    <div class="col-3"><label>iou_threshold <input type="text" id="cfg-trk-iou" value="${t.iou_threshold ?? 0.5}" class="form-control form-control-sm"></label></div>
     <div class="col-3"><label>depart_timeout <input type="text" id="cfg-trk-depart" value="${t.depart_timeout || 10}" class="form-control form-control-sm"></label></div>
     <div class="col-3"><label>buf_size <input type="number" id="cfg-trk-buf" value="${t.frame_buffer_size || 30}" class="form-control form-control-sm"></label></div>`;
 }
@@ -1470,6 +1471,7 @@ function collectSettingsForm() {
   const trk = settings.tracker || {};
   trk.max_age = parseInt(document.getElementById('cfg-trk-max-age')?.value) || trk.max_age;
   trk.n_init = parseInt(document.getElementById('cfg-trk-n-init')?.value) || trk.n_init;
+  trk.iou_threshold = parseFloat(document.getElementById('cfg-trk-iou')?.value) ?? trk.iou_threshold;
   trk.depart_timeout = parseFloat(document.getElementById('cfg-trk-depart')?.value) || trk.depart_timeout;
   trk.frame_buffer_size = parseInt(document.getElementById('cfg-trk-buf')?.value) || trk.frame_buffer_size;
   settings.tracker = trk;

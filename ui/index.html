@@ -99,9 +99,11 @@ input[list]:focus { border-color: var(--accent); }
   border-radius: 6px; border: 1px solid rgba(0,212,255,.2);
   background: #000;
 }
+.live-preview img[src=""], .live-preview img:not([src]) { display: none; }
 .live-preview .info { font-size: .9rem; line-height: 1.5; flex: 1; }
+.live-preview .date-filter-wrap { flex-shrink: 0; border-left: 1px solid rgba(255,255,255,.06); }
 .live-preview .info .name { font-size: 1.1rem; }
-.date-filter-wrap { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,.06); }
+.date-filter-wrap { padding: 8px 12px; }
 .date-filter-wrap .cal-month-nav { margin-bottom: 4px; }
 .date-filter-wrap .cal-month-label { font-size: .75rem; font-weight: 600; color: var(--text); white-space: nowrap; }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; width: 100%; max-width: 240px; }
@@ -231,7 +233,7 @@ input::placeholder, select option { color: var(--muted) !important; }
   .frame-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   .frame-card img { height: auto; max-height: 120px; object-fit: contain; background: #000; }
   .detail-scroll { max-height: none; }
-  .date-filter-wrap { padding: 6px 8px; }
+  .date-filter-wrap { padding: 6px 8px; border-left: none; }
   .cal-grid { max-width: 100%; }
   .cal-grid .cal-day { font-size: .65rem; padding: 2px 0; }
 }
@@ -244,7 +246,7 @@ input::placeholder, select option { color: var(--muted) !important; }
 .view-info-card .vi-row1 #vi-name { color: var(--text); }
 .view-info-card .vi-row2 { font-size: .75rem; color: var(--muted); }
 /* Edit mode preview — generous */
-.mode-edit .live-preview { max-height: 40vh; overflow: hidden; }
+.mode-edit .live-preview { max-height: unset; overflow: visible; }
 .mode-edit .live-preview > div:first-child { width: 45% !important; }
 .mode-edit .live-preview img { max-height: 35vh; }
 .mode-edit .live-preview .info { font-size: .9rem; line-height: 1.5; }
@@ -288,8 +290,8 @@ input::placeholder, select option { color: var(--muted) !important; }
     <!-- Table + Preview (left) -->
     <div class="col-md-6 main-col" id="main-col">
       <!-- Live preview -->
-      <div class="live-preview d-none" id="live-preview">
-        <div style="position:relative;flex-shrink:0;width:50%">
+      <div class="live-preview" id="live-preview">
+        <div style="position:relative;flex-shrink:0;width:45%">
           <img id="live-img" src="" alt="">
           <span class="badge-class" id="live-class" style="position:absolute;top:6px;left:6px;font-size:.75rem;padding:2px 8px">—</span>
         </div>
@@ -299,6 +301,16 @@ input::placeholder, select option { color: var(--muted) !important; }
           <div style="color:var(--muted);font-size:.8rem">Дата и время — <span id="live-ts">—</span></div>
           <div style="color:var(--muted);font-size:.8rem">Точность — <span id="live-conf">—</span></div>
           <div style="color:var(--muted);font-size:.8rem"><span id="live-face">—</span> · <span id="live-plate">—</span> · <span id="live-vmr">—</span></div>
+        </div>
+        <div class="date-filter-wrap" id="date-filter-wrap">
+          <div class="cal-month-nav d-flex align-items-center gap-2 w-100">
+            <button class="btn-muted btn-xs cal-prev" onclick="calPrevMonth()">&lt;</button>
+            <span class="cal-month-label flex-grow-1 text-center">—</span>
+            <button class="btn-muted btn-xs cal-next" onclick="calNextMonth()">&gt;</button>
+            <button class="btn-muted btn-xs cal-today" onclick="calGoToday()" title="Сегодня">•</button>
+            <button class="btn-muted btn-xs cal-clear" onclick="calClear()" title="Все даты">✕</button>
+          </div>
+          <div class="cal-grid" id="cal-grid"></div>
         </div>
       </div>
       <div class="main-table-col">
@@ -322,16 +334,6 @@ input::placeholder, select option { color: var(--muted) !important; }
           <button class="btn-neon-fill py-0" onclick="loadObjects(0)">Поиск</button>
           <button class="btn-muted py-0" onclick="resetFilters()">Сброс</button>
           <span style="color:var(--muted);font-size:.75rem" id="obj-count">—</span>
-        </div>
-        <div class="date-filter-wrap" id="date-filter-wrap">
-          <div class="cal-month-nav d-flex align-items-center gap-2 w-100">
-            <button class="btn-muted btn-xs cal-prev" onclick="calPrevMonth()">&lt;</button>
-            <span class="cal-month-label flex-grow-1 text-center">—</span>
-            <button class="btn-muted btn-xs cal-next" onclick="calNextMonth()">&gt;</button>
-            <button class="btn-muted btn-xs cal-today" onclick="calGoToday()" title="Сегодня">•</button>
-            <button class="btn-muted btn-xs cal-clear" onclick="calClear()" title="Все даты">✕</button>
-          </div>
-          <div class="cal-grid" id="cal-grid"></div>
         </div>
         <div class="table-cam" id="table-wrapper">
           <div class="table-responsive">
@@ -488,7 +490,7 @@ function restoreFilters() {
     if (v.sort) document.getElementById('filter-sort').value = v.sort;
     document.getElementById('group-by-name').checked = !!v.group;
     document.getElementById('show-ignored').checked = !!v.ignored;
-    if (v.date) window.selectedDate = v.date;
+    if (v.date && /^\d{4}-\d{2}-\d{2}$/.test(v.date)) window.selectedDate = v.date;
   } catch {}
 }
 function resetFilters() {
@@ -502,11 +504,6 @@ function resetFilters() {
   saveFilters();
   loadObjects(0);
 }
-function onDateChange() {
-  saveFilters();
-  loadObjects(0);
-}
-
 // ── Calendar widget ──────────────────────────────────────────────────
 let calDate = new Date();
 window.selectedDate = '';
@@ -544,10 +541,12 @@ function renderCal() {
   for (const d of dow) html += `<div class="cal-dow">${d}</div>`;
 
   // Previous month padding days
+  const prevYear = month === 0 ? year - 1 : year;
+  const prevMonth = month === 0 ? 11 : month - 1;
   const prevLast = new Date(year, month, 0).getDate();
   for (let i = startPad - 1; i >= 0; i--) {
     const d = prevLast - i;
-    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dateStr = `${prevYear}-${String(prevMonth + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     html += `<div class="cal-day cal-other" data-date="${dateStr}" onclick="calPick('${dateStr}')">${d}</div>`;
   }
 
@@ -568,8 +567,10 @@ function renderCal() {
   // Next month padding
   const totalCells = startPad + daysInMonth;
   const endPad = 7 - (totalCells % 7 || 7);
+  const nextYear2 = month === 11 ? year + 1 : year;
+  const nextMonth2 = month === 11 ? 0 : month + 1;
   for (let d = 1; d <= endPad && endPad < 7; d++) {
-    const dateStr = `${year}-${String(month+2).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dateStr = `${nextYear2}-${String(nextMonth2 + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     html += `<div class="cal-day cal-other" data-date="${dateStr}" onclick="calPick('${dateStr}')">${d}</div>`;
   }
 

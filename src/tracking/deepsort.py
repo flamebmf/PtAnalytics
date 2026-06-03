@@ -112,7 +112,7 @@ def iou(bb1: tuple, bb2: tuple) -> float:
 class DeepSortTracker:
     """Multi-object tracker using Kalman filters + IoU matching."""
 
-    def __init__(self, max_age: int = 30, n_init: int = 3, nn_budget: int = 100, iou_threshold: float = 0.3):
+    def __init__(self, max_age: int = 30, n_init: int = 3, nn_budget: int = 100, iou_threshold: float = 0.5):
         self.max_age = max_age
         self.n_init = n_init
         self.nn_budget = nn_budget

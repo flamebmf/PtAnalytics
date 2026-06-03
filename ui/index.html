@@ -101,6 +101,13 @@ input[list]:focus { border-color: var(--accent); }
 }
 .live-preview .info { font-size: .9rem; line-height: 1.5; flex: 1; }
 .live-preview .info .name { font-size: 1.1rem; }
+.date-filter-wrap { flex-shrink: 0; margin-left: auto; }
+.date-filter-wrap input[type="date"] {
+  color-scheme: dark; background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.12); border-radius: 6px;
+  color: var(--text); padding: 4px 6px; font-size: .8rem;
+}
+.date-filter-wrap input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.7); cursor: pointer; }
 /* Table */
 .main-table-col {
   flex-grow: 1; display: flex; flex-direction: column;
@@ -215,6 +222,8 @@ input::placeholder, select option { color: var(--muted) !important; }
   .frame-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   .frame-card img { height: auto; max-height: 120px; object-fit: contain; background: #000; }
   .detail-scroll { max-height: none; }
+  .date-filter-wrap { flex-direction: row !important; margin-left: 0; width: 100%; justify-content: flex-start !important; }
+  .date-filter-wrap input { width: 100% !important; }
 }
 /* View info card (above table in view mode) */
 .view-info-card {
@@ -280,6 +289,10 @@ input::placeholder, select option { color: var(--muted) !important; }
           <div style="color:var(--muted);font-size:.8rem">Дата и время — <span id="live-ts">—</span></div>
           <div style="color:var(--muted);font-size:.8rem">Точность — <span id="live-conf">—</span></div>
           <div style="color:var(--muted);font-size:.8rem"><span id="live-face">—</span> · <span id="live-plate">—</span> · <span id="live-vmr">—</span></div>
+        </div>
+        <div class="date-filter-wrap d-flex flex-column align-items-center justify-content-center px-2" id="date-filter-wrap">
+          <input type="date" id="filter-date" style="width:140px" onchange="onDateChange()">
+          <span style="color:var(--muted);font-size:.65rem;margin-top:2px">дата</span>
         </div>
       </div>
       <div class="main-table-col">
@@ -446,6 +459,7 @@ function saveFilters() {
     sort: document.getElementById('filter-sort').value,
     group: document.getElementById('group-by-name').checked,
     ignored: document.getElementById('show-ignored').checked,
+    date: document.getElementById('filter-date').value,
   })); } catch {}
 }
 function restoreFilters() {
@@ -458,6 +472,7 @@ function restoreFilters() {
     if (v.sort) document.getElementById('filter-sort').value = v.sort;
     document.getElementById('group-by-name').checked = !!v.group;
     document.getElementById('show-ignored').checked = !!v.ignored;
+    if (v.date) document.getElementById('filter-date').value = v.date;
   } catch {}
 }
 function resetFilters() {
@@ -467,6 +482,11 @@ function resetFilters() {
   document.getElementById('filter-sort').value = '-last_seen';
   document.getElementById('group-by-name').checked = false;
   document.getElementById('show-ignored').checked = false;
+  document.getElementById('filter-date').value = '';
+  saveFilters();
+  loadObjects(0);
+}
+function onDateChange() {
   saveFilters();
   loadObjects(0);
 }
@@ -504,6 +524,8 @@ async function loadObjects(offset) {
   if (sort !== '-last_seen') params.set('sort', sort);
   if (document.getElementById('show-ignored').checked) params.set('show_ignored', '1');
   if (groupByName) params.set('grouped', '1');
+  const dateVal = document.getElementById('filter-date').value;
+  if (dateVal) params.set('date', dateVal);
 
   const tbody = document.getElementById('obj-tbody');
   tbody.innerHTML = '<tr><td colspan="4" class="text-center" style="color:var(--muted)">загрузка…</td></tr>';
@@ -731,6 +753,7 @@ function closeDetail() {
 async function setObjClass() {
   const cls = document.getElementById('obj-class-select').value;
   if (!cls) return;
+  const offset = currentOffset;
   if (currentGroupName) {
     try {
       const r = await fetch('/objects/reclassify-group', {
@@ -749,7 +772,7 @@ async function setObjClass() {
       });
       if (!r.ok) throw new Error();
       loadDetail(currentObjId);
-      loadObjects(currentOffset);
+      loadObjects(offset);
     } catch { alert('Ошибка'); }
   }
 }
@@ -759,6 +782,7 @@ async function setGroupClass() {
   if (!currentGroupName) return;
   const cls = document.getElementById('group-class-select').value;
   if (!cls) return;
+  const offset = currentOffset;
   try {
     const r = await fetch('/objects/reclassify-group', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -767,6 +791,7 @@ async function setGroupClass() {
     const d = await r.json();
     if (!r.ok) throw new Error();
     alert('Обновлено: ' + d.updated + ' из ' + d.total + ' объектов → ' + cls);
+    loadObjects(offset);
   } catch { alert('Ошибка'); }
 }
 
@@ -774,6 +799,7 @@ async function setGroupClass() {
 async function saveName() {
   if (!currentObjId) return;
   const name = document.getElementById('detail-name').value.trim() || null;
+  const offset = currentOffset;
   try {
     const r = await fetch('/objects/' + currentObjId, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -781,7 +807,7 @@ async function saveName() {
     });
     if (!r.ok) throw new Error();
     const scrollY = document.getElementById('table-wrapper')?.scrollTop || 0;
-    await loadObjects(currentOffset);
+    await loadObjects(offset);
     refreshNameSuggestions();
     setTimeout(() => { const el = document.getElementById('table-wrapper'); if (el) el.scrollTop = scrollY; }, 50);
   } catch { alert('Ошибка сохранения'); }
@@ -814,11 +840,12 @@ async function deleteFrame(frameId) {
 
 async function ignoreObject() {
   if (!currentObjId) return;
+  const offset = currentOffset;
   try {
     const r = await fetch('/objects/' + currentObjId + '/ignore', { method: 'POST' });
     if (!r.ok) throw new Error();
     loadDetail(currentObjId);
-    loadObjects(currentOffset);
+    loadObjects(offset);
   } catch { alert('Ошибка'); }
 }
 
@@ -942,6 +969,7 @@ function applyMode() {
       imgWrap.style.cssText = 'width:100%;flex-shrink:0';
     }
     if (info) info.style.display = 'none';
+    preview.style.flexWrap = 'wrap';
     mainTableCol.style.width = '30%';
     tableWrap.style.maxHeight = '';
     tableWrap.style.flex = '1 1 auto';
@@ -963,6 +991,7 @@ function applyMode() {
     preview.style.height = '';
     preview.style.margin = '';
     preview.style.borderRadius = '';
+    preview.style.flexWrap = '';
     if (imgWrap) imgWrap.setAttribute('style', imgWrap.dataset.imgStyle || '');
     if (info) info.style.display = '';
     mainTableCol.style.width = '';

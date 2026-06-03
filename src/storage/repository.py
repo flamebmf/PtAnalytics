@@ -562,6 +562,7 @@ class StorageRepository:
         limit: int = 50,
         offset: int = 0,
         sort: str = "-last_seen",
+        date: Optional[str] = None,
     ) -> list[TrackedObject]:
         async with await get_session() as session:
             from sqlalchemy import asc, desc
@@ -577,6 +578,11 @@ class StorageRepository:
                 query = query.where(TrackedObject.name.ilike(f"%{name}%"))
             if not show_ignored:
                 query = query.where(TrackedObject.ignored != True)
+            if date:
+                from datetime import datetime, timedelta
+                dt = datetime.strptime(date, "%Y-%m-%d")
+                query = query.where(TrackedObject.last_seen >= dt)
+                query = query.where(TrackedObject.last_seen < dt + timedelta(days=1))
             query = query.offset(offset).limit(limit)
             result = await session.execute(query)
             return list(result.scalars().all())
@@ -586,6 +592,7 @@ class StorageRepository:
         camera_id: Optional[str] = None,
         class_name: Optional[str] = None,
         show_ignored: bool = False,
+        date: Optional[str] = None,
     ) -> int:
         async with await get_session() as session:
             from sqlalchemy import func
@@ -596,6 +603,11 @@ class StorageRepository:
                 query = query.where(TrackedObject.class_name == class_name)
             if not show_ignored:
                 query = query.where(TrackedObject.ignored != True)
+            if date:
+                from datetime import datetime, timedelta
+                dt = datetime.strptime(date, "%Y-%m-%d")
+                query = query.where(TrackedObject.last_seen >= dt)
+                query = query.where(TrackedObject.last_seen < dt + timedelta(days=1))
             result = await session.execute(query)
             return result.scalar() or 0
 

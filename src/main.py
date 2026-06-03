@@ -263,6 +263,7 @@ async def main():
         name = request.query.get("name")
         show_ignored = request.query.get("show_ignored") == "1"
         sort = request.query.get("sort", "-last_seen")
+        date = request.query.get("date")
         grouped = request.query.get("grouped") == "1"
 
         if grouped:
@@ -276,10 +277,10 @@ async def main():
         offset = int(request.query.get("offset", 0))
         objects = await repository.list_objects(
             camera_id=camera_id, class_name=class_name, name=name, show_ignored=show_ignored,
-            limit=limit, offset=offset, sort=sort,
+            limit=limit, offset=offset, sort=sort, date=date,
         )
         total = await repository.get_object_count(
-            camera_id=camera_id, class_name=class_name, show_ignored=show_ignored,
+            camera_id=camera_id, class_name=class_name, show_ignored=show_ignored, date=date,
         )
         items = [
             {

@@ -12,6 +12,7 @@ cameras:
     lpr_enabled: true      # per-camera override for LPR (default: true)
     face_enabled: true     # per-camera override for face recognition (default: true)
     vmr_enabled: true      # per-camera override for VMR (default: true)
+    enabled_classes: [person, bicycle, car, motorcycle, bus, truck]  # which classes to detect
     detector:
       imgsz: 640
   - id: "camera2"

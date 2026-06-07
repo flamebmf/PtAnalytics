@@ -63,7 +63,7 @@ class CameraPipeline:
             device=det_cfg.get("device", "cpu"),
             confidence=cam_det.get("confidence", det_cfg.get("confidence", 0.4)),
             iou=cam_det.get("iou", det_cfg.get("iou", 0.45)),
-            classes=cam_det.get("classes", det_cfg.get("classes")),
+            classes=self._resolve_classes(camera_config, settings),
             imgsz=cam_det.get("imgsz", det_cfg.get("imgsz", 640)),
             workers=cam_det.get("workers", det_cfg.get("workers")),
             backend=cam_det.get("backend", det_cfg.get("backend", "torch")),
@@ -692,6 +692,16 @@ class CameraPipeline:
         logger.info(f"[{self.cam_name}] reload_detector is deprecated for fine-tuned models")
         logger.info(f"[{self.cam_name}] Use reload_classifier instead for fine-tuned.pt")
 
+    @staticmethod
+    def _resolve_classes(camera_config: dict, settings: dict) -> list[int]:
+        cam_classes = camera_config.get("enabled_classes")
+        if cam_classes is not None:
+            cls_map = {"person": 0, "bicycle": 1, "car": 2, "motorcycle": 3, "bus": 5, "truck": 7}
+            return [cls_map[c] for c in cam_classes if c in cls_map]
+        det_cfg = settings.get("detector", {})
+        cam_det = camera_config.get("detector", {})
+        return cam_det.get("classes", det_cfg.get("classes")) or [0, 1, 2, 3, 5, 7]
+
     async def reconfigure(self, camera_config: dict, settings: dict):
         """Apply all settings from new config to running pipeline without restart."""
         # -- Detector --
@@ -707,7 +717,7 @@ class CameraPipeline:
                 device=new_device,
                 confidence=cam_det.get("confidence", det_cfg.get("confidence", 0.6)),
                 iou=cam_det.get("iou", det_cfg.get("iou", 0.45)),
-                classes=cam_det.get("classes", det_cfg.get("classes")),
+                classes=self._resolve_classes(camera_config, settings),
                 imgsz=cam_det.get("imgsz", det_cfg.get("imgsz", 1280)),
                 workers=cam_det.get("workers", det_cfg.get("workers")),
                 backend=new_backend,
@@ -716,7 +726,7 @@ class CameraPipeline:
         else:
             self.detector.confidence = cam_det.get("confidence", det_cfg.get("confidence", 0.6))
             self.detector.iou = cam_det.get("iou", det_cfg.get("iou", 0.45))
-            self.detector.classes = cam_det.get("classes", det_cfg.get("classes"))
+            self.detector.classes = self._resolve_classes(camera_config, settings)
             self.detector.imgsz = cam_det.get("imgsz", det_cfg.get("imgsz", 1280))
             self.detector.min_bbox_size = cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40))
 
@@ -765,6 +775,9 @@ class CameraPipeline:
         if os.path.isfile(ft_path):
             await self.reload_classifier(ft_path)
 
+        rev_cls = {0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 5: 'bus', 7: 'truck'}
+        cls_names = [rev_cls.get(c, str(c)) for c in (self.detector.classes or [])]
         logger.info(f"[{self.cam_name}] Reconfigured: conf={self.detector.confidence} "
                     f"fps={fps} imgsz={self.detector.imgsz} backend={self.detector.backend} "
-                    f"lpr={self.lpr.enabled} face={self.face_recognizer.enabled} vmr={self.vmr.enabled}")
+                    f"lpr={self.lpr.enabled} face={self.face_recognizer.enabled} vmr={self.vmr.enabled} "
+                    f"classes={cls_names}")

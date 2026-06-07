@@ -1424,6 +1424,11 @@ function renderCamerasTab(data) {
         <label style="font-size:.7rem"><input type="checkbox" data-cam="${i}" data-key="face_enabled" ${c.face_enabled !== false ? 'checked' : ''}> Face</label>
         <label style="font-size:.7rem"><input type="checkbox" data-cam="${i}" data-key="vmr_enabled" ${c.vmr_enabled !== false ? 'checked' : ''}> VMR</label>
       </div>
+      <div class="d-flex flex-wrap gap-2 mb-1" style="font-size:.7rem">
+        ${['person','bicycle','car','motorcycle','bus','truck'].map(cls =>
+          `<label style="font-size:.7rem"><input type="checkbox" data-cam="${i}" data-key="cls_${cls}" ${!c.enabled_classes || c.enabled_classes.includes(cls) ? 'checked' : ''}> ${cls}</label>`
+        ).join('')}
+      </div>
       <div class="d-flex flex-wrap gap-2" style="font-size:.7rem">
         <span>FPS <input type="number" data-cam="${i}" data-key="fps" value="${c.fps || 10}" style="width:50px;background:rgba(4,7,13,.8);border:1px solid rgba(255,255,255,.08);border-radius:4px;color:var(--text);padding:1px 4px"></span>
         <span>imgsz <input type="number" data-cam="${i}" data-key="imgsz" value="${(c.detector||{}).imgsz || 640}" style="width:55px;background:rgba(4,7,13,.8);border:1px solid rgba(255,255,255,.08);border-radius:4px;color:var(--text);padding:1px 4px"></span>
@@ -1666,6 +1671,12 @@ function collectSettingsForm() {
     if (face) c.face_enabled = face.checked;
     const vmr = document.querySelector(`input[data-cam="${i}"][data-key="vmr_enabled"]`);
     if (vmr) c.vmr_enabled = vmr.checked;
+    const classes = ['person','bicycle','car','motorcycle','bus','truck'];
+    const checkedClasses = classes.filter(cls => {
+      const el = document.querySelector(`input[data-cam="${i}"][data-key="cls_${cls}"]`);
+      return el ? el.checked : true;
+    });
+    c.enabled_classes = checkedClasses;
     const url = document.querySelector(`input[data-cam="${i}"][data-key="rtsp_url"]`);
     if (url) c.rtsp_url = url.value;
   });

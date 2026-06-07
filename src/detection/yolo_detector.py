@@ -111,7 +111,7 @@ class YoloDetector:
                     continue
                 # Drop small bboxes that touch frame edge (likely heads/feet passing by)
                 touches_edge = x1 <= 2 or y1 <= 2 or x2 >= fw - 2 or y2 >= fh - 2
-                if touches_edge and (w < 60 or h < 60):
+                if touches_edge and w < 60 and h < 60:
                     continue
                 detections.append({
                     "bbox": (int(x1), int(y1), int(x2), int(y2)),

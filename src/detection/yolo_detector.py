@@ -104,7 +104,7 @@ class YoloDetector:
                 h = y2 - y1
                 cls_id = int(box.cls[0])
                 # Persons can be small at distance; vehicles are always large
-                min_sz = 20 if cls_id == 0 else self.min_bbox_size
+                min_sz = {0: 40, 2: 80, 5: 80, 7: 80}.get(cls_id, self.min_bbox_size)
                 if w < min_sz or h < min_sz:
                     continue
                 # Drop extremely elongated bboxes (heads, feet, false positives)

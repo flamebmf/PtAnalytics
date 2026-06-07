@@ -242,8 +242,13 @@ class CameraPipeline:
                 # Buffer frames for entry/exit selection (keep last 30 per track)
                 for track in tracks:
                     tid = track["track_id"]
-                    area = (track["bbox"][2] - track["bbox"][0]) * (track["bbox"][3] - track["bbox"][1])
-                    quality = area * track.get("confidence", 0)
+                    bw = track["bbox"][2] - track["bbox"][0]
+                    bh = track["bbox"][3] - track["bbox"][1]
+                    area = bw * bh
+                    aspect = max(bw, bh) / max(min(bw, bh), 1)
+                    # Penalize elongated bboxes (heads/feet/false positives) — prefer compact shapes
+                    aspect_penalty = min(1.0, 4.0 / aspect) if aspect > 1 else 1.0
+                    quality = area * track.get("confidence", 0) * aspect_penalty
                     self._frame_buffer.setdefault(tid, []).append({
                         "frame": frame.copy(), "track": track, "area": area,
                         "confidence": track.get("confidence", 0),

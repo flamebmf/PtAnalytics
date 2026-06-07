@@ -97,12 +97,21 @@ class YoloDetector:
         )
         detections = []
         min_sz = self.min_bbox_size
+        fh, fw = frame.shape[:2]
         if results[0].boxes is not None:
             for box in results[0].boxes:
                 x1, y1, x2, y2 = box.xyxy[0].tolist()
                 w = x2 - x1
                 h = y2 - y1
                 if w < min_sz or h < min_sz:
+                    continue
+                # Drop extremely elongated bboxes (heads, feet, false positives)
+                aspect = max(w, h) / max(min(w, h), 1)
+                if aspect > 5:
+                    continue
+                # Drop small bboxes that touch frame edge (likely heads/feet passing by)
+                touches_edge = x1 <= 2 or y1 <= 2 or x2 >= fw - 2 or y2 >= fh - 2
+                if touches_edge and (w < 60 or h < 60):
                     continue
                 detections.append({
                     "bbox": (int(x1), int(y1), int(x2), int(y2)),

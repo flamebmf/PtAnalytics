@@ -26,9 +26,10 @@ class VMRRecognizer:
         self._model = None
         self._processor = None
         self._texts_encoded = None
+        self._load_failed = False
 
     def _ensure_model(self):
-        if self._model is None and self.enabled:
+        if self._model is None and self.enabled and not self._load_failed:
             try:
                 cache_dir = str(Path(self.model_dir) / "huggingface") if self.model_dir else None
                 if cache_dir:
@@ -51,7 +52,7 @@ class VMRRecognizer:
                 logger.info(f"VMR: CLIP model loaded ({device}), {len(self.BRANDS)} brands")
             except Exception as e:
                 logger.error(f"VMR: failed to load CLIP: {e}")
-                self.enabled = False
+                self._load_failed = True
 
     def classify(self, crop: np.ndarray) -> Optional[dict]:
         """Classify vehicle crop → brand. Returns {brand, confidence} or None."""
@@ -70,12 +71,15 @@ class VMRRecognizer:
                 img_feat = out.pooler_output if hasattr(out, 'pooler_output') else out[0]
                 img_feat = img_feat / img_feat.norm(dim=-1, keepdim=True)
                 similarities = (img_feat @ self._texts_encoded.T).squeeze(0)
-                best_idx = int(similarities.argmax().item())
-                best_score = float(similarities[best_idx].item())
+                top2 = similarities.topk(2)
+                best_idx = int(top2.indices[0].item())
+                best_score = float(top2.values[0].item())
+                second_score = float(top2.values[1].item())
 
-            if best_score < self.min_confidence:
-                return None
-            return {"brand": self.BRANDS[best_idx], "confidence": round(best_score, 3)}
+            # Accept if above absolute threshold, or if clearly separated from #2
+            if best_score >= self.min_confidence or (best_score >= 0.12 and best_score - second_score >= 0.05):
+                return {"brand": self.BRANDS[best_idx], "confidence": round(best_score, 3)}
+            return None
         except Exception as e:
             logger.debug(f"VMR classification error: {e}")
             return None

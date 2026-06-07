@@ -79,36 +79,38 @@ class CameraPipeline:
             iou_threshold=trk_cfg.get("iou_threshold", 0.5),
         )
 
-        # Recognizers
+        # Recognizers (camera config can override global enabled)
         lpr_cfg = settings.get("lpr", {})
         self.lpr = LPRRecognizer(
             min_confidence=lpr_cfg.get("min_confidence", 0.6),
-            enabled=lpr_cfg.get("enabled", True),
+            enabled=camera_config.get("lpr_enabled", lpr_cfg.get("enabled", True)),
         )
 
         face_cfg = settings.get("face", {})
         self.face_recognizer = FaceRecognizer(
             min_confidence=face_cfg.get("min_confidence", 0.5),
             search_threshold=face_cfg.get("search_threshold", 0.6),
-            enabled=face_cfg.get("enabled", True),
+            enabled=camera_config.get("face_enabled", face_cfg.get("enabled", True)),
         )
 
         vmr_cfg = settings.get("vmr", {})
         models_dir = settings.get("app", {}).get("models_dir", "/app/models")
         self.vmr = VMRRecognizer(
             min_confidence=vmr_cfg.get("min_confidence", 0.3),
-            enabled=vmr_cfg.get("enabled", True),
+            enabled=camera_config.get("vmr_enabled", vmr_cfg.get("enabled", True)),
             model_dir=models_dir,
         )
 
         # Crop classifier (fine-tuned on named objects)
         models_dir = settings.get("app", {}).get("models_dir", "/app/models")
+        training_cfg = settings.get("training", {})
+        self.crop_classifier_confidence = training_cfg.get("crop_classifier_confidence", 0.65)
         fine_tuned_path = os.path.join(os.path.expandvars(models_dir), "fine-tuned.pt")
         if not os.path.isfile(fine_tuned_path):
             fine_tuned_path = os.path.join(os.path.dirname(__file__), "..", "training", "fine-tuned.pt")
         self.crop_classifier = CropClassifier(
             model_path=fine_tuned_path,
-            confidence=det_cfg.get("confidence", 0.4) * 0.5,
+            confidence=self.crop_classifier_confidence,
             imgsz=640,
         )
 
@@ -121,12 +123,15 @@ class CameraPipeline:
         self._last_obj_by_track: dict[int, TrackedObject] = {}
         self._frame_buffer: dict[int, list[dict]] = {}
         self._processed_tracks: set[int] = set()
+        self._best_frame_data: dict[int, dict] = {}
+        self._best_quality_saved: dict[int, float] = {}
         self._buf_size = max(5, int(trk_cfg.get("frame_buffer_size", 30)))
         self.track_depart_timeout = settings.get("tracker", {}).get("depart_timeout", 3.0)
 
         # Dataset collection (3 crops per track: entry, mid, exit)
         ds_cfg = settings.get("dataset", {})
         self.crop_enabled = ds_cfg.get("crop_enabled", True)
+        self.min_crop_size = ds_cfg.get("min_crop_size", 30)
         self._last_frame: dict[int, np.ndarray] = {}
         self._last_bbox: dict[int, tuple] = {}
         self._last_class_name: dict[int, str] = {}
@@ -238,6 +243,7 @@ class CameraPipeline:
                 for track in tracks:
                     tid = track["track_id"]
                     area = (track["bbox"][2] - track["bbox"][0]) * (track["bbox"][3] - track["bbox"][1])
+                    quality = area * track.get("confidence", 0)
                     self._frame_buffer.setdefault(tid, []).append({
                         "frame": frame.copy(), "track": track, "area": area,
                         "confidence": track.get("confidence", 0),
@@ -246,6 +252,17 @@ class CameraPipeline:
                     buf = self._frame_buffer[tid]
                     if len(buf) > self._buf_size:
                         buf.pop(0)
+
+                    # Track best frame over entire track lifetime
+                    if tid not in self._best_frame_data or quality > self._best_frame_data[tid]["quality"]:
+                        self._best_frame_data[tid] = {
+                            "frame": frame.copy(),
+                            "track": dict(track),
+                            "area": area,
+                            "confidence": track.get("confidence", 0),
+                            "quality": quality,
+                            "is_reappeared": tid in self._last_obj_by_track,
+                        }
 
                     if tid not in self._active_tracks:
                         self._active_tracks[tid] = {
@@ -256,12 +273,28 @@ class CameraPipeline:
 
                     if tid not in self._processed_tracks and track.get("status") == "confirmed":
                         self._processed_tracks.add(tid)
-                        best = max(buf, key=lambda x: x["area"] * x["confidence"])
+                        best = self._best_frame_data.get(tid) or max(buf, key=lambda x: x["area"] * x["confidence"])
+                        self._best_quality_saved[tid] = best["quality"]
                         await self._process_track(
                             best["frame"], best["track"],
                             reappeared=best["is_reappeared"],
                         )
                     else:
+                        if tid in self._processed_tracks:
+                            bfd = self._best_frame_data.get(tid)
+                            if bfd and bfd["quality"] > self._best_quality_saved.get(tid, 0) * 1.5:
+                                self._best_quality_saved[tid] = bfd["quality"]
+                                obj = self._last_obj_by_track.get(tid)
+                                if obj:
+                                    try:
+                                        await self.repo.save_frame(
+                                            object_id=obj.id,
+                                            frame=bfd["frame"],
+                                            bbox=bfd["track"]["bbox"],
+                                            confidence=bfd["track"].get("confidence", 0),
+                                        )
+                                    except Exception as e:
+                                        logger.error(f"DB error saving improved frame: {e}")
                         self._active_tracks[tid]["missing_since"] = 0.0
 
                 # Mid-crop: save when track has been alive ~50% of depart timeout
@@ -277,6 +310,7 @@ class CameraPipeline:
                                 if bbox and cn is not None and ci is not None and lf is not None:
                                     await self.repo.save_crop(
                                         self.cam_id, cn, ci, lf, bbox, phase="mid",
+                                        min_crop_size=self.min_crop_size,
                                     )
                                 self._crop_phase[tid] = 2
 
@@ -307,10 +341,26 @@ class CameraPipeline:
                                 if bbox and cn is not None and ci is not None and lf is not None:
                                     await self.repo.save_crop(
                                         self.cam_id, cn, ci, lf, bbox, phase="exit",
+                                        min_crop_size=self.min_crop_size,
                                     )
                                 self._crop_phase[tid] = 4
+                            # Save exit frame for processed tracks
+                            obj = self._last_obj_by_track.get(tid)
+                            bfd = self._best_frame_data.get(tid)
+                            if obj and bfd:
+                                try:
+                                    await self.repo.save_frame(
+                                        object_id=obj.id,
+                                        frame=bfd["frame"],
+                                        bbox=bfd["track"]["bbox"],
+                                        confidence=bfd["track"].get("confidence", 0),
+                                    )
+                                except Exception as e:
+                                    logger.error(f"Exit frame save error: {e}")
                             self._active_tracks.pop(tid)
                             self._frame_buffer.pop(tid, None)
+                            self._best_frame_data.pop(tid, None)
+                            self._best_quality_saved.pop(tid, None)
                             self._processed_tracks.discard(tid)
                             logger.info(
                                 f"[{self.cam_name}] Track {tid} ({td['class_name']}) "
@@ -400,17 +450,14 @@ class CameraPipeline:
                         face_id = face_hash
                     break
 
+        vmr_brand = vmr_result.get("brand") if vmr_result else None
         try:
             obj = await self.repo.get_or_create_object(
                 camera_id=self.cam_id,
                 track_id=track_id,
                 class_name=class_name,
                 timestamp=datetime.now(timezone.utc),
-                embedding=embedding,
-                plate_number=plate_number,
-                face_hash=face_hash,
-                face_id=face_id,
-                vmr_brand=vmr_result.get("brand") if vmr_result else None,
+                vmr_brand=vmr_brand,
             )
             self.stats.objects_stored += 1
             self._last_obj_by_track[track_id] = obj
@@ -429,6 +476,9 @@ class CameraPipeline:
                 frame=frame,
                 bbox=bbox,
                 confidence=confidence,
+                plate_number=plate_number,
+                face_id=face_id,
+                vmr_brand=vmr_brand,
             )
         except Exception as e:
             logger.error(f"DB error saving frame: {e}")
@@ -437,7 +487,23 @@ class CameraPipeline:
         if not obj.name and class_name in ("car", "truck", "bus", "motorcycle"):
             try:
                 x1, y1, x2, y2 = bbox
-                crop = frame[y1:y2, x1:x2]
+                frame_h, frame_w = frame.shape[:2]
+                crop_w, crop_h = x2 - x1, y2 - y1
+                skip_reid = False
+                if self.min_crop_size > 0 and (crop_w < self.min_crop_size or crop_h < self.min_crop_size):
+                    touches_edge = x1 <= 0 or y1 <= 0 or x2 >= frame_w or y2 >= frame_h
+                    if not touches_edge:
+                        skip_reid = True
+                    else:
+                        cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+                        nw = max(int(crop_w * 2), self.min_crop_size)
+                        nh = max(int(crop_h * 2), self.min_crop_size)
+                        x1 = max(0, int(cx - nw / 2))
+                        y1 = max(0, int(cy - nh / 2))
+                        x2 = min(frame_w, int(cx + nw / 2))
+                        y2 = min(frame_h, int(cy + nh / 2))
+                        skip_reid = x2 - x1 < self.min_crop_size or y2 - y1 < self.min_crop_size
+                crop = frame[y1:y2, x1:x2] if not skip_reid else np.empty((0, 0, 3), dtype=np.uint8)
                 if crop.size == 0:
                     logger.debug(f"[{self.cam_name}] ReID skip: empty crop track {track_id}")
                 else:
@@ -464,17 +530,33 @@ class CameraPipeline:
             except Exception as e:
                 logger.error(f"ReID error: {e}")
 
-        # Fine-tuned crop classifier: if object has no name and is a vehicle,
-        # run its crop through fine-tuned.pt to check for a custom class match
-        if not obj.name and class_name in vehicle_classes and self.crop_classifier.model is not None:
+        # Fine-tuned crop classifier: run crop through fine-tuned.pt
+        # for any unassigned object to check for a custom class match
+        if not obj.name and self.crop_classifier.model is not None:
             try:
                 x1, y1, x2, y2 = bbox
-                crop = frame[y1:y2, x1:x2]
+                frame_h, frame_w = frame.shape[:2]
+                crop_w, crop_h = x2 - x1, y2 - y1
+                skip_classifier = False
+                if self.min_crop_size > 0 and (crop_w < self.min_crop_size or crop_h < self.min_crop_size):
+                    touches_edge = x1 <= 0 or y1 <= 0 or x2 >= frame_w or y2 >= frame_h
+                    if not touches_edge:
+                        skip_classifier = True
+                    else:
+                        cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+                        nw = max(int(crop_w * 2), self.min_crop_size)
+                        nh = max(int(crop_h * 2), self.min_crop_size)
+                        x1 = max(0, int(cx - nw / 2))
+                        y1 = max(0, int(cy - nh / 2))
+                        x2 = min(frame_w, int(cx + nw / 2))
+                        y2 = min(frame_h, int(cy + nh / 2))
+                        skip_classifier = x2 - x1 < self.min_crop_size or y2 - y1 < self.min_crop_size
+                crop = frame[y1:y2, x1:x2] if not skip_classifier else np.empty((0, 0, 3), dtype=np.uint8)
                 if crop.size > 0:
                     custom_cls, custom_conf = await asyncio.get_running_loop().run_in_executor(
                         None, self.crop_classifier.classify, crop
                     )
-                    if custom_cls and custom_conf >= 0.3:
+                    if custom_cls and custom_conf >= self.crop_classifier_confidence:
                         obj.name = custom_cls
                         await self.repo.update_object_name(obj.id, custom_cls)
                         logger.info(f"[{self.cam_name}] Fine-tuned: track {track_id} → '{custom_cls}' ({custom_conf:.3f})")
@@ -487,6 +569,7 @@ class CameraPipeline:
                 await self.repo.save_crop(
                     self.cam_id, class_name, track["class_id"],
                     frame, bbox, phase="entry",
+                    min_crop_size=self.min_crop_size,
                 )
                 self._crop_phase[track_id] = 1
             except Exception as e:
@@ -648,28 +731,39 @@ class CameraPipeline:
         trk_cfg = settings.get("tracker", {})
         self.tracker.max_age = trk_cfg.get("max_age", 30)
         self.tracker.n_init = trk_cfg.get("n_init", 3)
-        self.tracker.iou_threshold = trk_cfg.get("iou_threshold", 0.5)
+        self.tracker.iou_threshold = trk_cfg.get("iou_threshold") or 0.5
         self.track_depart_timeout = trk_cfg.get("depart_timeout", 3.0)
 
-        # -- LPR --
+        # -- LPR (camera config can override global) --
         lpr_cfg = settings.get("lpr", {})
-        self.lpr.enabled = lpr_cfg.get("enabled", True)
+        self.lpr.enabled = camera_config.get("lpr_enabled", lpr_cfg.get("enabled", True))
         self.lpr.min_confidence = lpr_cfg.get("min_confidence", 0.6)
 
-        # -- Face --
+        # -- Face (camera config can override global) --
         face_cfg = settings.get("face", {})
-        self.face_recognizer.enabled = face_cfg.get("enabled", True)
+        self.face_recognizer.enabled = camera_config.get("face_enabled", face_cfg.get("enabled", True))
         self.face_recognizer.min_confidence = face_cfg.get("min_confidence", 0.5)
         self.face_recognizer.search_threshold = face_cfg.get("search_threshold", 0.6)
 
-        # -- VMR --
+        # -- VMR (camera config can override global) --
         vmr_cfg = settings.get("vmr", {})
-        self.vmr.enabled = vmr_cfg.get("enabled", True)
+        self.vmr.enabled = camera_config.get("vmr_enabled", vmr_cfg.get("enabled", True))
         self.vmr.min_confidence = vmr_cfg.get("min_confidence", 0.3)
 
         # -- Crop dataset --
         ds_cfg = settings.get("dataset", {})
         self.crop_enabled = ds_cfg.get("crop_enabled", True)
+        self.min_crop_size = ds_cfg.get("min_crop_size", 30)
+
+        trn_cfg = settings.get("training", {})
+        self.crop_classifier_confidence = trn_cfg.get("crop_classifier_confidence", 0.65)
+        self.crop_classifier.confidence = self.crop_classifier_confidence
+
+        # -- Reload fine-tuned classifier if available --
+        models_dir = settings.get("app", {}).get("models_dir", "/app/models")
+        ft_path = os.path.join(os.path.expandvars(models_dir), "fine-tuned.pt")
+        if os.path.isfile(ft_path):
+            await self.reload_classifier(ft_path)
 
         logger.info(f"[{self.cam_name}] Reconfigured: conf={self.detector.confidence} "
                     f"fps={fps} imgsz={self.detector.imgsz} backend={self.detector.backend} "

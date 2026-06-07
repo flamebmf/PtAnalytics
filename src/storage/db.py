@@ -68,5 +68,25 @@ async def init_schema():
             stripped = stmt.strip()
             if stripped:
                 await session.execute(text(stripped + ";"))
+        # Migrate frame_captures: add per-frame detection columns
+        for col in ("plate_number VARCHAR(32)", "face_id VARCHAR(64)", "vmr_brand VARCHAR(64)"):
+            await session.execute(text(f"ALTER TABLE frame_captures ADD COLUMN IF NOT EXISTS {col}"))
+        # Backfill: copy old object-level detection data to frames
+        await session.execute(text("""
+            UPDATE frame_captures fc
+            SET face_id = obj.face_id
+            FROM tracked_objects obj
+            WHERE fc.object_id = obj.id
+              AND obj.face_id IS NOT NULL
+              AND fc.face_id IS NULL
+        """))
+        await session.execute(text("""
+            UPDATE frame_captures fc
+            SET plate_number = obj.plate_number
+            FROM tracked_objects obj
+            WHERE fc.object_id = obj.id
+              AND obj.plate_number IS NOT NULL
+              AND fc.plate_number IS NULL
+        """))
         await session.commit()
-        logger.info("Schema check complete (crop_samples)")
+        logger.info("Schema check + migration complete")

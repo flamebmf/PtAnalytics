@@ -1,19 +1,17 @@
 # Copyright (c) 2026 PlurumTech.com
 # SPDX-License-Identifier: GPL-3.0-only
 """
-CLIP-based auto-assignment for PtAnalytics.
+CLIP-based clustering auto-assignment for PtAnalytics.
 
-Processes exported crops from a server, computes embeddings for
-reference images (named objects) and unlabeled images, then assigns
-names based on cosine similarity.
+Clusters unlabeled objects by visual similarity using CLIP embeddings,
+then assigns cluster names per class (e.g., person_001, car_001).
 
-Usage (called from sync.py):
+Usage:
   from tools.auto_assign_clip import run_auto_assign
-  assignments = run_auto_assign(extract_dir, manifest, threshold=0.85)
+  assignments, details = run_auto_assign(extract_dir, manifest, eps=0.5, min_samples=2)
 """
-import json
-import sys
 from pathlib import Path
+from collections import defaultdict
 
 import numpy as np
 
@@ -38,61 +36,103 @@ def _compute_embedding(model, preprocess, device, image_path):
     return emb.cpu().numpy().flatten()
 
 
-def run_auto_assign(extract_dir, manifest, threshold=0.85):
-    extract_dir = Path(extract_dir)
+def _compute_pair_embedding(model, preprocess, device, entry, extract_dir):
+    """Compute combined embedding from crop+full frame pair (average of both)."""
+    embs = []
+    for key in ("crop", "full"):
+        arcname = entry.get(key)
+        if not arcname:
+            continue
+        img_path = extract_dir / arcname
+        if img_path.exists():
+            embs.append(_compute_embedding(model, preprocess, device, img_path))
+    if not embs:
+        return None
+    return np.mean(embs, axis=0)
 
-    # Load reference embeddings
-    refs = manifest.get("references", {})
-    if not refs:
-        print("No reference images found in manifest")
-        return {}
+
+def _cluster_embeddings(embeddings, eps=0.5, min_samples=2):
+    """Cluster embeddings using DBSCAN. Returns cluster labels (-1 = noise)."""
+    from sklearn.cluster import DBSCAN
+    X = np.array(embeddings)
+    clustering = DBSCAN(eps=eps, min_samples=min_samples, metric="cosine").fit(X)
+    return clustering.labels_
+
+
+def run_auto_assign(extract_dir, manifest, eps=0.5, min_samples=2):
+    extract_dir = Path(extract_dir)
+    unlabeled = manifest.get("unlabeled", [])
+    if not unlabeled:
+        print("No unlabeled images found")
+        return {}, []
 
     print(f"Loading CLIP model...")
     model, preprocess, device = _load_clip()
     print(f"CLIP loaded on {device}")
 
-    # Compute reference embeddings (average per name)
-    ref_embeddings = {}
-    for name, arcnames in refs.items():
-        embs = []
-        for arcname in arcnames:
-            img_path = extract_dir / arcname
-            if not img_path.exists():
-                continue
-            emb = _compute_embedding(model, preprocess, device, img_path)
-            embs.append(emb)
-        if embs:
-            ref_embeddings[name] = np.mean(embs, axis=0)
-
-    if not ref_embeddings:
-        print("No reference embeddings computed")
-        return {}
-
-    ref_names = list(ref_embeddings.keys())
-    ref_matrix = np.array([ref_embeddings[n] for n in ref_names])
-
-    # Process unlabeled
-    unlabeled = manifest.get("unlabeled", [])
-    if not unlabeled:
-        print("No unlabeled images found")
-        return {}
+    # Group by class_name for per-class clustering
+    by_class = defaultdict(list)
+    for entry in unlabeled:
+        by_class[entry.get("class_name", "unknown")].append(entry)
 
     assignments = {}
-    ref_idx = 0
+    details = []
     total = len(unlabeled)
-    for entry in unlabeled:
-        ref_idx += 1
-        if ref_idx % 10 == 0:
-            print(f"  processed {ref_idx}/{total}")
-        img_path = extract_dir / entry["arcname"]
-        if not img_path.exists():
-            continue
-        emb = _compute_embedding(model, preprocess, device, img_path)
-        sims = ref_matrix @ emb  # cosine similarity (normalized)
-        best_idx = int(np.argmax(sims))
-        best_score = float(sims[best_idx])
-        if best_score >= threshold:
-            assignments[entry["object_id"]] = ref_names[best_idx]
+    assigned_count = 0
 
-    print(f"  processed {total}/{total} — {len(assignments)} assigned")
-    return assignments
+    for class_name, entries in sorted(by_class.items()):
+        print(f"  Clustering {class_name} ({len(entries)} objects)...")
+
+        # Compute embeddings
+        embs = []
+        valid_entries = []
+        for entry in entries:
+            emb = _compute_pair_embedding(model, preprocess, device, entry, extract_dir)
+            if emb is not None:
+                embs.append(emb)
+                valid_entries.append(entry)
+
+        if len(embs) < min_samples:
+            print(f"    Too few objects ({len(embs)}), skipping")
+            for entry in valid_entries:
+                details.append({
+                    "object_id": entry["object_id"],
+                    "class_name": class_name,
+                    "cluster_id": -1,
+                    "cluster_name": "",
+                    "assigned": False,
+                })
+            continue
+
+        # Cluster
+        labels = _cluster_embeddings(embs, eps=eps, min_samples=min_samples)
+
+        # Assign names per cluster
+        cluster_map = {}
+        for label in set(labels):
+            if label == -1:
+                continue
+            count = int(np.sum(labels == label))
+            if count >= min_samples:
+                cluster_id = f"{class_name}_{label + 1:03d}"
+                cluster_map[label] = cluster_id
+
+        for entry, label, emb in zip(valid_entries, labels, embs):
+            cluster_name = cluster_map.get(label, "")
+            assigned = bool(cluster_name)
+            details.append({
+                "object_id": entry["object_id"],
+                "class_name": class_name,
+                "cluster_id": int(label),
+                "cluster_name": cluster_name,
+                "assigned": assigned,
+            })
+            if assigned:
+                assignments[entry["object_id"]] = cluster_name
+                assigned_count += 1
+
+        n_clusters = len(cluster_map)
+        print(f"    Clusters: {n_clusters}, assigned: {len(cluster_map) * min_samples}+")
+
+    print(f"  Assigned: {assigned_count}/{total}")
+    return assignments, details

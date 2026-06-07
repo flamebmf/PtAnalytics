@@ -116,7 +116,7 @@ class DeepSortTracker:
         self.max_age = max_age
         self.n_init = n_init
         self.nn_budget = nn_budget
-        self.iou_threshold = iou_threshold
+        self.iou_threshold = iou_threshold or 0.5
         self.trackers: list[KalmanBoxTracker] = []
         self._next_id = 0
 

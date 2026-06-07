@@ -61,8 +61,21 @@ mkdir -p "${DATA_ROOT}/frames" "${DATA_ROOT}/models" \
 
 for f in settings.yaml cameras.yaml triggers.yaml; do
     if [[ -f "${PROJECT_DIR}/config/$f" ]]; then
-        cp "${PROJECT_DIR}/config/$f" "${DATA_ROOT}/config/"
-        log "Copied config/$f"
+        if [[ -f "${DATA_ROOT}/config/$f" ]]; then
+            MERGE_SCRIPT="${PROJECT_DIR}/tools/merge_yaml_config.py"
+            if python3 "$MERGE_SCRIPT" \
+                --existing "${DATA_ROOT}/config/$f" \
+                --default "${PROJECT_DIR}/config/$f" \
+                --output "${DATA_ROOT}/config/$f.tmp"; then
+                mv "${DATA_ROOT}/config/$f.tmp" "${DATA_ROOT}/config/$f"
+                log "Merged config/$f (existing + new defaults)"
+            else
+                log "WARN: merge failed for $f, keeping existing"
+            fi
+        else
+            cp "${PROJECT_DIR}/config/$f" "${DATA_ROOT}/config/"
+            log "Copied config/$f"
+        fi
     fi
 done
 

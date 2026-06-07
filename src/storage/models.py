@@ -59,6 +59,9 @@ class FrameCapture(Base):
     bbox_x2: Mapped[int] = mapped_column(Integer, nullable=False)
     bbox_y2: Mapped[int] = mapped_column(Integer, nullable=False)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    plate_number: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    face_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    vmr_brand: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     object: Mapped["TrackedObject"] = relationship(back_populates="frames")

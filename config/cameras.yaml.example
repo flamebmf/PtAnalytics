@@ -9,6 +9,9 @@ cameras:
     motion_enabled: true
     roi: []
     motion_threshold: 0.005
+    lpr_enabled: true      # per-camera override for LPR (default: true)
+    face_enabled: true     # per-camera override for face recognition (default: true)
+    vmr_enabled: true      # per-camera override for VMR (default: true)
     detector:
       imgsz: 640
   - id: "camera2"

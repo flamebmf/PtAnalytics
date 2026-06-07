@@ -196,14 +196,17 @@ async def main():
             key = name or "__all__"
             training_state[key] = {"status": "collecting", "started_at": _local(datetime.now(timezone.utc))}
             try:
-                dataset_dir = await fine_tuner.collect_dataset(name_filter=name)
+                dataset_dir = await fine_tuner.collect_dataset(name_filter=name, progress_callback=lambda msg: training_state[key].update({"collect_msg": msg}))
                 if dataset_dir is None:
                     training_state[key] = {"status": "skipped", "reason": "not enough samples", "finished_at": _local(datetime.now(timezone.utc))}
                     return
-                training_state[key]["status"] = "training"
+                training_state[key].update({"status": "training", "collect_msg": None})
 
-                def on_epoch(ep: int, total: int, box: float, cls_loss: float, dfl: float):
-                    training_state[key].update({"epoch": ep, "total_epochs": total, "box_loss": round(box, 4), "cls_loss": round(cls_loss, 4)})
+                def on_epoch(ep: int, total: int, box: float, cls_loss: float, dfl: float, val_metrics: dict | None = None):
+                    update = {"epoch": ep, "total_epochs": total, "box_loss": round(box, 4), "cls_loss": round(cls_loss, 4), "dfl_loss": round(dfl, 4)}
+                    if val_metrics:
+                        update["val"] = val_metrics
+                    training_state[key].update(update)
 
                 result = await fine_tuner.train(dataset_dir, epoch_callback=on_epoch)
                 if result:
@@ -261,6 +264,7 @@ async def main():
         camera_id = request.query.get("camera_id")
         class_name = request.query.get("class_name")
         name = request.query.get("name")
+        unnamed = request.query.get("unnamed") == "1"
         show_ignored = request.query.get("show_ignored") == "1"
         sort = request.query.get("sort", "-last_seen")
         date = request.query.get("date")
@@ -276,11 +280,11 @@ async def main():
         limit = int(request.query.get("limit", 50))
         offset = int(request.query.get("offset", 0))
         objects = await repository.list_objects(
-            camera_id=camera_id, class_name=class_name, name=name, show_ignored=show_ignored,
+            camera_id=camera_id, class_name=class_name, name=name, unnamed=unnamed, show_ignored=show_ignored,
             limit=limit, offset=offset, sort=sort, date=date,
         )
         total = await repository.get_object_count(
-            camera_id=camera_id, class_name=class_name, show_ignored=show_ignored, date=date,
+            camera_id=camera_id, class_name=class_name, unnamed=unnamed, show_ignored=show_ignored, date=date,
         )
         items = [
             {
@@ -312,7 +316,8 @@ async def main():
             obj = result.scalar_one_or_none()
             if obj is None:
                 return web.json_response({"error": "not found"}, status=404)
-        frames = await repository.list_frames(object_id=obj_id)
+        limit = request.query.get("limit")
+        frames = await repository.list_frames(object_id=obj_id, limit=int(limit) if limit else 0)
         return web.json_response({
             "id": str(obj.id),
             "camera_id": obj.camera_id,
@@ -375,14 +380,14 @@ async def main():
             body = await request.json()
         except Exception:
             return web.json_response({"error": "invalid JSON"}, status=400)
-        new_class = body.get("class_name", "").strip()
-        if new_class:
-            result = await repository.reclassify_frame(frame_id, new_class)
+        target_name = body.get("name", "").strip()
+        if target_name:
+            result = await repository.move_frame_to_name(frame_id, target_name, class_name=body.get("class_name"))
         else:
-            target_name = body.get("name", "").strip()
-            if not target_name:
+            new_class = body.get("class_name", "").strip()
+            if not new_class:
                 return web.json_response({"error": "class_name or name required"}, status=400)
-            result = await repository.move_frame_to_name(frame_id, target_name)
+            result = await repository.reclassify_frame(frame_id, new_class)
         if result is None:
             return web.json_response({"error": "not found"}, status=404)
         return web.json_response(result)
@@ -572,6 +577,34 @@ async def main():
         settings = new_settings; cameras_cfg = new_cameras_cfg; triggers_cfg = new_triggers_cfg
         return web.json_response({"status": "ok", "cameras": len(pipelines), "cameras_added": list(new_ids - old_ids), "cameras_removed": list(old_ids - new_ids)})
 
+    async def handle_model_info(request: web.Request) -> web.Response:
+        import os, datetime
+        fine_tuned_path = Path(settings.get("app", {}).get("models_dir", "/app/models")) / "fine-tuned.pt"
+        info = {"fine_tuned": {"exists": False}}
+        if fine_tuned_path.exists():
+            st = fine_tuned_path.stat()
+            info["fine_tuned"]["exists"] = True
+            info["fine_tuned"]["size_mb"] = round(st.st_size / (1024 * 1024), 1)
+            info["fine_tuned"]["modified"] = datetime.datetime.fromtimestamp(st.st_mtime).isoformat()
+            info["fine_tuned"]["path"] = str(fine_tuned_path)
+        # Collect classifier info from running pipelines
+        classifiers = {}
+        for pl in pipelines:
+            if hasattr(pl, 'crop_classifier') and pl.crop_classifier is not None:
+                clf = pl.crop_classifier
+                cam_info = {"loaded": clf.model is not None}
+                if clf.model is not None:
+                    try:
+                        names = clf.model.names if hasattr(clf.model, 'names') else {}
+                        cam_info["classes"] = list(names.values()) if isinstance(names, dict) else list(names)
+                        cam_info["num_classes"] = len(cam_info["classes"])
+                    except Exception:
+                        cam_info["classes"] = []
+                        cam_info["num_classes"] = 0
+                classifiers[pl.cam_id] = cam_info
+        info["classifiers"] = classifiers
+        return web.json_response(info)
+
     async def handle_model_reset(request: web.Request) -> web.Response:
         import os
         fine_tuned = Path(settings.get("app", {}).get("models_dir", "/app/models")) / "fine-tuned.pt"
@@ -641,10 +674,23 @@ async def main():
         return web.json_response({"status": "ok", "restored": count})
 
     async def handle_auto_assign_export(request: web.Request) -> web.Response:
-        import io, zipfile, json
+        import io, zipfile, json, cv2
         named_objs = await repository.get_named_objects()
         unnamed_objs = await repository.get_unnamed_objects()
         data_dir_path = Path(settings.get("app", {}).get("data_dir", "/data/frames"))
+        max_per_name = int(request.query.get("max_per_name", 30))
+        loop = asyncio.get_running_loop()
+
+        def _crop_and_encode(path: Path, x1: int, y1: int, x2: int, y2: int) -> bytes:
+            img = cv2.imread(str(path))
+            if img is None:
+                return b""
+            crop = img[y1:y2, x1:x2]
+            if crop.size == 0:
+                return b""
+            _, buf = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 90])
+            return buf.tobytes()
+
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             manifest = {"references": {}, "unlabeled": []}
@@ -653,26 +699,44 @@ async def main():
                 name = obj.name
                 if name not in seen_names:
                     seen_names[name] = 0
-                seen_names[name] += 1
-                if seen_names[name] > 5:
+                if seen_names[name] >= max_per_name:
                     continue
-                frames = await repository.list_frames(obj.id, limit=1)
-                for f in frames:
-                    if f.image_path:
-                        img_path = Path(f.image_path)
-                        if img_path.exists():
-                            arcname = f"references/{name}/{obj.id}_{f.id}.jpg"
-                            zf.write(str(img_path), arcname)
-                            manifest["references"].setdefault(name, []).append(arcname)
+                seen_names[name] += 1
+                best = await repository.get_best_frame(obj.id)
+                if best and best.image_path:
+                    img_path = Path(best.image_path)
+                    if img_path.exists():
+                        base = f"references/{name}/{obj.id}_{best.id}"
+                        arcname_full = f"{base}_full.jpg"
+                        zf.write(str(img_path), arcname_full)
+                        entry = {"full": arcname_full}
+                        jpg = await loop.run_in_executor(
+                            None, _crop_and_encode,
+                            img_path, best.bbox_x1, best.bbox_y1, best.bbox_x2, best.bbox_y2,
+                        )
+                        if jpg:
+                            arcname_crop = f"{base}_crop.jpg"
+                            zf.writestr(arcname_crop, jpg)
+                            entry["crop"] = arcname_crop
+                        manifest["references"].setdefault(name, []).append(entry)
             for obj in unnamed_objs:
-                frames = await repository.list_frames(obj.id, limit=1)
-                for f in frames:
-                    if f.image_path:
-                        img_path = Path(f.image_path)
-                        if img_path.exists():
-                            arcname = f"unlabeled/{obj.id}_{f.id}.jpg"
-                            zf.write(str(img_path), arcname)
-                            manifest["unlabeled"].append({"arcname": arcname, "object_id": str(obj.id), "class_name": obj.class_name})
+                best = await repository.get_best_frame(obj.id)
+                if best and best.image_path:
+                    img_path = Path(best.image_path)
+                    if img_path.exists():
+                        base = f"unlabeled/{obj.id}_{best.id}"
+                        arcname_full = f"{base}_full.jpg"
+                        zf.write(str(img_path), arcname_full)
+                        entry = {"full": arcname_full, "object_id": str(obj.id), "class_name": obj.class_name}
+                        jpg = await loop.run_in_executor(
+                            None, _crop_and_encode,
+                            img_path, best.bbox_x1, best.bbox_y1, best.bbox_x2, best.bbox_y2,
+                        )
+                        if jpg:
+                            arcname_crop = f"{base}_crop.jpg"
+                            zf.writestr(arcname_crop, jpg)
+                            entry["crop"] = arcname_crop
+                        manifest["unlabeled"].append(entry)
             zf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
         buf.seek(0)
         return web.Response(body=buf.read(), content_type="application/zip",
@@ -692,6 +756,7 @@ async def main():
     health_app.router.add_get("/auto-assign/export", handle_auto_assign_export)
     health_app.router.add_post("/auto-assign/upload", handle_auto_assign_upload)
 
+    health_app.router.add_get("/model/info", handle_model_info)
     health_app.router.add_get("/objects", handle_list_objects)
     health_app.router.add_get("/objects/names", handle_list_names)
     health_app.router.add_get("/objects/dates", handle_objects_dates)

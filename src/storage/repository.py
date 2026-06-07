@@ -9,7 +9,7 @@ from typing import Optional
 import cv2
 import numpy as np
 from loguru import logger
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func, text
 
 from .db import get_session
 from .models import Camera, TrackedObject, FrameCapture, CropSample, Event
@@ -49,79 +49,22 @@ class StorageRepository:
         track_id: int,
         class_name: str,
         timestamp: Optional[datetime] = None,
-        embedding: Optional[list[float]] = None,
-        plate_number: Optional[str] = None,
-        face_hash: Optional[str] = None,
-        face_id: Optional[str] = None,
         vmr_brand: Optional[str] = None,
     ) -> TrackedObject:
         async with await get_session() as session:
-            result = await session.execute(
-                select(TrackedObject).where(
-                    TrackedObject.camera_id == camera_id,
-                    TrackedObject.track_id == track_id,
-                ).order_by(TrackedObject.last_seen.desc()).limit(1)
-            )
-            obj = result.scalars().first()
-
             ts = self._db_timestamp(timestamp)
-            if obj:
-                if not obj.name:
-                    obj.class_name = class_name
-                obj.appearance_count = (obj.appearance_count or 0) + 1
-                if plate_number:
-                    obj.plate_number = plate_number
-                if face_hash:
-                    obj.face_hash = face_hash
-                if face_id:
-                    obj.face_id = face_id
-                if embedding is not None:
-                    obj.embedding = embedding
-                if vmr_brand:
-                    if obj.metadata_:
-                        obj.metadata_["vmr"] = vmr_brand
-                    else:
-                        obj.metadata_ = {"vmr": vmr_brand}
-                await session.commit()
-                await session.refresh(obj)
-            else:
-                if vmr_brand:
-                    metadata = {"vmr": vmr_brand}
-                else:
-                    metadata = None
-                obj = TrackedObject(
-                    camera_id=camera_id,
-                    track_id=track_id,
-                    class_name=class_name,
-                    first_seen=ts,
-                    last_seen=ts,
-                    embedding=embedding,
-                    plate_number=plate_number,
-                    face_hash=face_hash,
-                    face_id=face_id,
-                    metadata_=metadata,
-                )
-                session.add(obj)
-                await session.flush()
-
-                # Auto-link to named object with same face_id
-                if face_id:
-                    existing = await session.execute(
-                        select(TrackedObject).where(
-                            TrackedObject.face_id == face_id,
-                            TrackedObject.name.isnot(None),
-                            TrackedObject.name != "",
-                            TrackedObject.id != obj.id,
-                        ).limit(1)
-                    )
-                    match = existing.scalar_one_or_none()
-                    if match:
-                        obj.name = match.name
-                        logger.info(f"Auto-linked object {obj.id} to '{match.name}' by face_id")
-
-                await session.commit()
-                await session.refresh(obj)
-
+            metadata = {"vmr": vmr_brand} if vmr_brand else None
+            obj = TrackedObject(
+                camera_id=camera_id,
+                track_id=track_id,
+                class_name=class_name,
+                first_seen=ts,
+                last_seen=ts,
+                metadata_=metadata,
+            )
+            session.add(obj)
+            await session.commit()
+            await session.refresh(obj)
             return obj
 
     async def save_frame(
@@ -131,6 +74,9 @@ class StorageRepository:
         bbox: tuple[int, int, int, int],
         confidence: float,
         timestamp: Optional[datetime] = None,
+        plate_number: Optional[str] = None,
+        face_id: Optional[str] = None,
+        vmr_brand: Optional[str] = None,
     ) -> FrameCapture:
         x1, y1, x2, y2 = bbox
         annotated = frame.copy()
@@ -153,6 +99,9 @@ class StorageRepository:
                 image_path=str(filepath),
                 bbox_x1=x1, bbox_y1=y1, bbox_x2=x2, bbox_y2=y2,
                 confidence=confidence,
+                plate_number=plate_number,
+                face_id=face_id,
+                vmr_brand=vmr_brand,
                 timestamp=ts,
             )
             session.add(fc)
@@ -173,14 +122,32 @@ class StorageRepository:
         frame: np.ndarray,
         bbox: tuple[int, int, int, int],
         phase: str = "entry",
+        min_crop_size: int = 0,
     ) -> Optional[str]:
         """Save clean crop + YOLO label for dataset collection.
-        Returns relative path if saved, None if skipped (dedup or empty crop).
+        Returns relative path if saved, None if skipped (empty crop, too small).
+        When min_crop_size > 0, crops smaller than that are skipped unless they
+        touch a frame edge — in which case the bbox is expanded up to 200%.
         """
-        if await self._check_crop_dedup(camera_id, class_name, bbox):
-            return None
-
         x1, y1, x2, y2 = bbox
+        w, h = x2 - x1, y2 - y1
+        frame_h, frame_w = frame.shape[:2]
+
+        if min_crop_size > 0 and (w < min_crop_size or h < min_crop_size):
+            touches_edge = x1 <= 0 or y1 <= 0 or x2 >= frame_w or y2 >= frame_h
+            if touches_edge:
+                cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+                nw = max(int(w * 2), min_crop_size)
+                nh = max(int(h * 2), min_crop_size)
+                x1 = max(0, int(cx - nw / 2))
+                y1 = max(0, int(cy - nh / 2))
+                x2 = min(frame_w, int(cx + nw / 2))
+                y2 = min(frame_h, int(cy + nh / 2))
+                if x2 - x1 < min_crop_size or y2 - y1 < min_crop_size:
+                    return None
+            else:
+                return None
+
         crop = frame[y1:y2, x1:x2]
         if crop.size == 0:
             return None
@@ -435,7 +402,7 @@ class StorageRepository:
             await session.commit()
             return {"frame_id": str(fc.id), "new_object_id": str(target_obj.id), "class_name": new_class}
 
-    async def move_frame_to_name(self, frame_id: uuid.UUID, target_name: str) -> Optional[dict]:
+    async def move_frame_to_name(self, frame_id: uuid.UUID, target_name: str, class_name: Optional[str] = None) -> Optional[dict]:
         """Move frame to an object with the given name (create if needed)."""
         async with await get_session() as session:
             result = await session.execute(
@@ -459,10 +426,22 @@ class StorageRepository:
             )
             target_obj = target.scalar_one_or_none()
             if target_obj is None:
+                # Determine class: explicit > dominant for name > old class
+                if not class_name:
+                    dom = await session.execute(
+                        select(TrackedObject.class_name, func.count(TrackedObject.id).label("cnt"))
+                        .where(TrackedObject.name == target_name)
+                        .where(TrackedObject.class_name != "")
+                        .group_by(TrackedObject.class_name)
+                        .order_by(text("cnt DESC"))
+                        .limit(1)
+                    )
+                    dom_row = dom.first()
+                    class_name = dom_row[0] if dom_row else None
                 target_obj = TrackedObject(
                     camera_id=old_obj.camera_id,
                     track_id=old_obj.track_id,
-                    class_name=old_obj.class_name,
+                    class_name=class_name or old_obj.class_name,
                     name=target_name,
                     face_id=old_obj.face_id,
                     face_hash=old_obj.face_hash,
@@ -491,7 +470,7 @@ class StorageRepository:
             max_val = max_ts.scalar()
             old_obj.last_seen = self._db_timestamp(max_val) if max_val else old_obj.last_seen
             await session.commit()
-            return {"frame_id": str(fc.id), "target_name": target_name, "target_object_id": str(target_obj.id)}
+            return {"frame_id": str(fc.id), "target_name": target_name, "target_object_id": str(target_obj.id), "class_name": target_obj.class_name}
 
     async def reclassify_group(self, group_name: str, new_class: str) -> dict:
         """Change class_name for all objects with the given name."""
@@ -558,6 +537,7 @@ class StorageRepository:
         camera_id: Optional[str] = None,
         class_name: Optional[str] = None,
         name: Optional[str] = None,
+        unnamed: bool = False,
         show_ignored: bool = False,
         limit: int = 50,
         offset: int = 0,
@@ -576,13 +556,19 @@ class StorageRepository:
                 query = query.where(TrackedObject.class_name == class_name)
             if name:
                 query = query.where(TrackedObject.name.ilike(f"%{name}%"))
+            if unnamed:
+                query = query.where(
+                    (TrackedObject.name.is_(None)) | (TrackedObject.name == "")
+                )
             if not show_ignored:
                 query = query.where(TrackedObject.ignored != True)
             if date:
                 from datetime import datetime, timedelta
                 dt = datetime.strptime(date, "%Y-%m-%d")
-                query = query.where(TrackedObject.last_seen >= dt)
-                query = query.where(TrackedObject.last_seen < dt + timedelta(days=1))
+                msk_start = dt - timedelta(hours=3)
+                msk_end = dt + timedelta(days=1) - timedelta(hours=3)
+                query = query.where(TrackedObject.last_seen >= msk_start)
+                query = query.where(TrackedObject.last_seen < msk_end)
             query = query.offset(offset).limit(limit)
             result = await session.execute(query)
             return list(result.scalars().all())
@@ -591,6 +577,7 @@ class StorageRepository:
         self,
         camera_id: Optional[str] = None,
         class_name: Optional[str] = None,
+        unnamed: bool = False,
         show_ignored: bool = False,
         date: Optional[str] = None,
     ) -> int:
@@ -601,13 +588,19 @@ class StorageRepository:
                 query = query.where(TrackedObject.camera_id == camera_id)
             if class_name:
                 query = query.where(TrackedObject.class_name == class_name)
+            if unnamed:
+                query = query.where(
+                    (TrackedObject.name.is_(None)) | (TrackedObject.name == "")
+                )
             if not show_ignored:
                 query = query.where(TrackedObject.ignored != True)
             if date:
                 from datetime import datetime, timedelta
                 dt = datetime.strptime(date, "%Y-%m-%d")
-                query = query.where(TrackedObject.last_seen >= dt)
-                query = query.where(TrackedObject.last_seen < dt + timedelta(days=1))
+                msk_start = dt - timedelta(hours=3)
+                msk_end = dt + timedelta(days=1) - timedelta(hours=3)
+                query = query.where(TrackedObject.last_seen >= msk_start)
+                query = query.where(TrackedObject.last_seen < msk_end)
             result = await session.execute(query)
             return result.scalar() or 0
 
@@ -644,7 +637,7 @@ class StorageRepository:
     async def list_frames(
         self,
         object_id: uuid.UUID,
-        limit: int = 20,
+        limit: int = 0,
         offset: int = 0,
     ) -> list[FrameCapture]:
         async with await get_session() as session:
@@ -653,10 +646,24 @@ class StorageRepository:
                 .where(FrameCapture.object_id == object_id)
                 .order_by(FrameCapture.timestamp.desc())
                 .offset(offset)
-                .limit(limit)
             )
+            if limit:
+                query = query.limit(limit)
             result = await session.execute(query)
             return list(result.scalars().all())
+
+    async def get_best_frame(self, object_id: uuid.UUID) -> Optional[FrameCapture]:
+        async with await get_session() as session:
+            from sqlalchemy import literal_column
+            area = (FrameCapture.bbox_x2 - FrameCapture.bbox_x1) * (FrameCapture.bbox_y2 - FrameCapture.bbox_y1)
+            query = (
+                select(FrameCapture)
+                .where(FrameCapture.object_id == object_id)
+                .order_by(area.desc())
+                .limit(1)
+            )
+            result = await session.execute(query)
+            return result.scalar_one_or_none()
 
     async def update_object_name(self, object_id: uuid.UUID, name: Optional[str]) -> bool:
         async with await get_session() as session:
@@ -769,14 +776,16 @@ class StorageRepository:
     async def get_available_dates(self) -> list[dict]:
         async with await get_session() as session:
             from sqlalchemy import func, cast, Date
+            from datetime import timedelta
+            msk_ts = TrackedObject.last_seen + timedelta(hours=3)
             result = await session.execute(
                 select(
-                    cast(TrackedObject.last_seen, Date).label("date"),
+                    cast(msk_ts, Date).label("date"),
                     func.count().label("count"),
                 )
                 .where(TrackedObject.ignored != True)
-                .group_by(cast(TrackedObject.last_seen, Date))
-                .order_by(cast(TrackedObject.last_seen, Date).desc())
+                .group_by(cast(msk_ts, Date))
+                .order_by(cast(msk_ts, Date).desc())
                 .limit(365)
             )
             return [{"date": str(row[0]), "count": row[1]} for row in result.all()]

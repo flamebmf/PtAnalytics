@@ -8,7 +8,7 @@ Usage:
   python tools/sync.py backup --url http://server:8080
   python tools/sync.py restore --url http://server:8080 --input backup.zip
   python tools/sync.py train --url http://server:8080 [--output-dir ./training]
-  python tools/sync.py auto-assign --url http://server:8080 [--threshold 0.85] [--output-dir ./tools-output]
+   python tools/sync.py auto-assign --url http://server:8080 [--eps 0.5] [--min-samples 2] [--output-dir ./tools-output]
 """
 import argparse
 import io
@@ -103,18 +103,40 @@ def cmd_train(args):
     print(f"Dataset saved to {dataset_zip}")
 
     # Step 3: run local training
-    print("Running training (this may take a while)...")
+    print("Running training...")
     train_script = Path(__file__).resolve().parent / "train_yolo.py"
     if not train_script.exists():
         train_script = Path(__file__).resolve().parent / "train_yolo.bat"
+    train_cmd = [sys.executable, str(train_script), str(dataset_zip.resolve())]
+    if getattr(args, "imgsz", None):
+        train_cmd.append(str(args.imgsz))
+    if getattr(args, "force", False):
+        train_cmd.append("--force")
     result = subprocess.run(
-        [sys.executable, str(train_script), str(dataset_zip)],
-        cwd=str(out_dir),
-        capture_output=True, text=True,
+        train_cmd,
+        cwd=str(out_dir), capture_output=True, text=True,
     )
-    print(result.stdout)
+    import re as _re
+    _epoch_line = _re.compile(r'\s+(\d+)/(\d+)\s+([\d.]+G)?\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)')
+    _last_epoch = 0
+    _total_epochs = 0
+    for line in result.stdout.splitlines():
+        m = _epoch_line.search(line)
+        if m:
+            cur, total, _, box, cls_, dfl = m.groups()
+            cur, total = int(cur), int(total)
+            _total_epochs = total
+            if cur != _last_epoch and (cur % 10 == 0 or cur == total):
+                _last_epoch = cur
+                print(f"  Эпоха {cur}/{total}  box={box}  cls={cls_}  dfl={dfl}")
+        elif 'all' in line and 'mAP50' in line:
+            parts = line.split()
+            if len(parts) >= 7:
+                print(f"  Валидация: P={parts[3]} R={parts[4]} mAP50={parts[5]} mAP50-95={parts[6]}")
+        elif any(kw in line for kw in ('DONE', 'ERROR', 'SKIP', 'Training', 'Dataset:', 'Validation:', 'Device:', 'Cleaned:', 'Found ZIP', ' train')):
+            print(f"  {line.strip()}")
     if result.returncode != 0:
-        print("Training failed:", result.stderr)
+        print("Training failed")
         sys.exit(1)
 
     # Step 4: upload model
@@ -128,6 +150,28 @@ def cmd_train(args):
     ])
     result = json.loads(data)
     print(f"Model uploaded: {result.get('status')}")
+    # Show training summary from YOLO results.csv
+    try:
+        import csv
+        runs_dir = Path(out_dir) / "runs" / "detect"
+        if runs_dir.exists():
+            dirs = sorted(runs_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
+            if dirs:
+                csv_path = dirs[0] / "results.csv"
+                if csv_path.exists():
+                    with open(csv_path) as f:
+                        rows = list(csv.DictReader(f))
+                    if rows:
+                        last = rows[-1]
+                        print(f"\n  ── Результаты обучения ──")
+                        print(f"  Эпох: {last.get('epoch', '?')}")
+                        for k in ("metrics/mAP50(B)", "metrics/mAP50-95(B)",
+                                  "train/box_loss", "train/cls_loss", "train/dfl_loss"):
+                            if k in last:
+                                short = k.split("/")[-1].replace("(B)", "")
+                                print(f"  {short}: {last[k]}")
+    except Exception:
+        pass
 
 
 def cmd_auto_assign(args):
@@ -166,14 +210,15 @@ def cmd_auto_assign(args):
     # Step 4: run CLIP
     print("Running CLIP auto-assignment...")
     from tools.auto_assign_clip import run_auto_assign
-    assignments = run_auto_assign(
+    assignments, _ = run_auto_assign(
         extract_dir=extract_dir,
         manifest=manifest,
-        threshold=args.threshold,
+        eps=args.eps,
+        min_samples=args.min_samples,
     )
 
     if not assignments:
-        print("No assignments found above threshold")
+        print("No assignments found")
         sys.exit(0)
 
     # Step 5: upload results
@@ -199,7 +244,8 @@ def main():
     parser.add_argument("--input", help="Input file (for restore)")
     parser.add_argument("--output", help="Output file (for backup)")
     parser.add_argument("--output-dir", help="Working directory")
-    parser.add_argument("--threshold", type=float, default=0.85, help="CLIP similarity threshold")
+    parser.add_argument("--eps", type=float, default=0.5, help="DBSCAN clustering epsilon")
+    parser.add_argument("--min-samples", type=int, default=2, help="DBSCAN min samples")
     args = parser.parse_args()
 
     if args.command == "backup":

@@ -43,6 +43,7 @@ class FineTuner:
         self.workers = config.get("detector", {}).get("workers")
         self.batch_size = self.cfg.get("batch_size", 8)
         self.min_show = self.cfg.get("min_show_frames", 5)
+        self.min_crop_size = config.get("dataset", {}).get("min_crop_size", 30)
         self.net = None
 
     @property
@@ -96,7 +97,7 @@ class FineTuner:
             )
             return result.scalar() or 0
 
-    async def collect_dataset(self, name_filter: Optional[str] = None) -> Optional[Path]:
+    async def collect_dataset(self, name_filter: Optional[str] = None, progress_callback=None) -> Optional[Path]:
         """Export YOLO dataset from named objects. Optionally filter by object name."""
         async with await get_session() as session:
             q = (
@@ -113,6 +114,11 @@ class FineTuner:
         if not named_objects:
             logger.info("FineTune: no named objects found")
             return None
+
+        names_found = set(o.name for o in named_objects)
+        logger.info(f"FineTune: found {len(names_found)} named groups ({len(named_objects)} objects)")
+        if progress_callback:
+            progress_callback(f"найдено {len(names_found)} групп, {len(named_objects)} объектов")
 
         if name_filter:
             # Per-name training: use dominant class, merge all frames regardless of current class
@@ -136,11 +142,14 @@ class FineTuner:
             for obj in named_objects:
                 class_groups.setdefault(obj.name, []).append(obj)
             valid = {}
-            for name, objs in class_groups.items():
+            for idx, (name, objs) in enumerate(class_groups.items()):
+                if progress_callback:
+                    progress_callback(f"сбор данных: {name} ({idx+1}/{len(class_groups)})")
                 total = await self._count_frames_for_objects(objs)
+                status = "✓ ready" if total >= self.min_samples else f"✗ need {self.min_samples - total} more"
+                logger.info(f"FineTune: name '{name}' → {total} frames from {len(objs)} objects [{status}]")
                 if total >= self.min_samples:
                     valid[name] = objs
-                    logger.info(f"FineTune: name '{name}' has {total} frames from {len(objs)} objects")
 
         if not valid:
             logger.info("FineTune: no class has enough samples (need {})", self.min_samples)
@@ -152,7 +161,9 @@ class FineTuner:
 
         classes_yaml = list(valid.keys())
 
-        for cls_name, objs in valid.items():
+        for ci, (cls_name, objs) in enumerate(valid.items()):
+            if progress_callback:
+                progress_callback(f"экспорт {cls_name} ({ci+1}/{len(valid)})")
             img_dir = dataset_dir / "train" / "images"
             lbl_dir = dataset_dir / "train" / "labels"
             img_dir.mkdir(parents=True, exist_ok=True)
@@ -180,6 +191,20 @@ class FineTuner:
                         saved += 1
 
             logger.info(f"FineTune: class '{cls_name}' exported {saved} crops")
+            if saved < self.min_samples:
+                logger.warning(
+                    f"FineTune: class '{cls_name}' has only {saved} usable crops after filtering "
+                    f"(need {self.min_samples}); class included with reduced samples"
+                )
+
+        total_saved = sum(
+            1 for _ in (dataset_dir / "train" / "images").rglob("*.jpg")
+        ) if (dataset_dir / "train" / "images").exists() else 0
+
+        if total_saved == 0:
+            logger.info("FineTune: no crops saved for any class — aborting")
+            shutil.rmtree(dataset_dir, ignore_errors=True)
+            return None
 
         # Validation split (10%)
         for cls_name in classes_yaml:
@@ -224,15 +249,43 @@ class FineTuner:
         cb = epoch_callback
 
         def _train():
-            import sys, io
+            import sys, io, re
             model = YOLO(base_path)
 
             current_epoch = [0]
             current_total = [self.epochs]
+            current_loss = [0.0, 0.0, 0.0]  # box, cls, dfl
+
+            class TeeLogger(io.StringIO):
+                """Forward YOLO progress lines to logger in real-time."""
+                def write(self, s):
+                    super().write(s)
+                    stripped = s.strip()
+                    if not stripped:
+                        return
+                    # Forward progress / loss lines immediately
+                    if re.search(r'(Epoch\s+\d+/\d+|box_loss|cls_loss|\d+%|\d+/\d+\s+\[\d)', stripped):
+                        logger.info(f"YOLO: {stripped}")
+                def flush(self):
+                    pass
+
+            def on_batch_end(trainer):
+                try:
+                    loss = trainer.loss
+                    if loss is not None:
+                        box = float(loss[0]) if len(loss) > 0 else 0
+                        cls = float(loss[1]) if len(loss) > 1 else 0
+                        dfl = float(loss[2]) if len(loss) > 2 else 0
+                        current_loss[0] = round(box, 4)
+                        current_loss[1] = round(cls, 4)
+                        current_loss[2] = round(dfl, 4)
+                        if cb:
+                            cb(current_epoch[0], current_total[0], current_loss[0], current_loss[1], current_loss[2])
+                except Exception:
+                    pass
 
             def on_train_epoch_end(trainer):
                 current_epoch[0] = trainer.epoch + 1
-                current_total[0] = trainer.epochs
 
             def on_val_end(trainer):
                 ep = current_epoch[0]
@@ -245,15 +298,28 @@ class FineTuner:
                             mp, mr = float(res[2]), float(res[3])
                 except Exception:
                     pass
-                logger.info(f"FineTune epoch {ep}/{total} | mAP50={mp:.4f} mAP50-95={mr:.4f}")
+                p, r = 0.0, 0.0
+                try:
+                    if hasattr(trainer, 'metrics') and trainer.metrics is not None:
+                        mp_obj = trainer.metrics
+                        if hasattr(mp_obj, 'box'):
+                            p = float(mp_obj.box.mp) if hasattr(mp_obj.box, 'mp') else 0
+                            r = float(mp_obj.box.mr) if hasattr(mp_obj.box, 'mr') else 0
+                except Exception:
+                    pass
+                logger.info(f"FineTune epoch {ep}/{total} | P={p:.4f} R={r:.4f} mAP50={mp:.4f} mAP50-95={mr:.4f}")
                 if cb:
-                    cb(ep, total, 0, 0, 0)
+                    cb(ep, total, current_loss[0], current_loss[1], current_loss[2], val_metrics={
+                        "P": round(p, 4), "R": round(r, 4),
+                        "mAP50": round(mp, 4), "mAP50-95": round(mr, 4),
+                    })
 
+            model.add_callback("on_batch_end", on_batch_end)
             model.add_callback("on_train_epoch_end", on_train_epoch_end)
             model.add_callback("on_val_end", on_val_end)
 
             old_stdout = sys.stdout
-            sys.stdout = io.StringIO()
+            sys.stdout = TeeLogger()
             try:
                 model.train(
                     data=str(yaml_path),
@@ -270,7 +336,7 @@ class FineTuner:
             finally:
                 captured = sys.stdout.getvalue()
                 sys.stdout = old_stdout
-                # Log YOLO summary lines only (model summary, dataset scan, optimizer)
+                # Log final summary lines
                 for line in captured.split('\n'):
                     stripped = line.strip()
                     if stripped and any(kw in stripped for kw in ('model.yaml', 'summary', 'train:', 'val:', 'optimizer:', 'Starting training', 'Image sizes')):
@@ -352,8 +418,7 @@ class FineTuner:
                 if f.is_file():
                     zf.write(f, f.relative_to(dataset_dir.parent))
 
-    @staticmethod
-    def _read_crop(fc: FrameCapture) -> Optional[np.ndarray]:
+    def _read_crop(self, fc: FrameCapture) -> Optional[np.ndarray]:
         """Extract clean crop from saved frame image using bbox."""
         try:
             img_path = Path(fc.image_path)
@@ -369,6 +434,21 @@ class FineTuner:
             y2 = min(h, fc.bbox_y2)
             if x2 <= x1 or y2 <= y1:
                 return None
+            crop_w = x2 - x1
+            crop_h = y2 - y1
+            if self.min_crop_size > 0 and (crop_w < self.min_crop_size or crop_h < self.min_crop_size):
+                touches_edge = x1 <= 0 or y1 <= 0 or x2 >= w or y2 >= h
+                if not touches_edge:
+                    return None
+                cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+                nw = max(int(crop_w * 2), self.min_crop_size)
+                nh = max(int(crop_h * 2), self.min_crop_size)
+                x1 = max(0, int(cx - nw / 2))
+                y1 = max(0, int(cy - nh / 2))
+                x2 = min(w, int(cx + nw / 2))
+                y2 = min(h, int(cy + nh / 2))
+                if x2 - x1 < self.min_crop_size or y2 - y1 < self.min_crop_size:
+                    return None
             return frame[y1:y2, x1:x2]
         except Exception:
             return None

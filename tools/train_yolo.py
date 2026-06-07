@@ -42,11 +42,15 @@ extracted_dir = BASE / "extracted"
 zips = []
 if ZIP_PATH and ZIP_PATH.exists():
     zips = [ZIP_PATH]
-zips += list(extracted_dir.glob("*.zip")) + list(BASE.glob("combined*.zip")) + list(BASE.glob("dataset-*.zip"))
+else:
+    zips += list(extracted_dir.glob("*.zip")) + list(BASE.glob("combined*.zip")) + list(BASE.glob("dataset-*.zip"))
 
 if zips:
     zip_path = zips[0]
-    print(f"Found ZIP: {zip_path}, extracting...")
+    if ZIP_PATH and ZIP_PATH.exists():
+        print(f"Using fresh export: {zip_path}")
+    else:
+        print(f"Using cached ZIP: {zip_path} (no fresh export found)")
     target = extracted_dir / "combined"
     shutil.rmtree(target, ignore_errors=True)
     with zipfile.ZipFile(str(zip_path)) as z:
@@ -65,19 +69,35 @@ with open(str(dataset_yaml), "w") as f:
     yaml.dump(data_cfg, f, default_flow_style=False)
 print(f"Dataset path fixed: {dataset_dir}")
 
+# Print dataset summary
+with open(str(dataset_yaml), "r") as f:
+    data_cfg = yaml.safe_load(f)
+names = data_cfg.get("names", [])
+nc = data_cfg.get("nc", 0)
+train_dir = dataset_dir / "train" / "images"
+val_dir = dataset_dir / "val" / "images"
+train_count = len(list(train_dir.glob("*.jpg"))) if train_dir.exists() else 0
+val_count = len(list(val_dir.glob("*.jpg"))) if val_dir.exists() else 0
+per_class = {}
+for name in names:
+    per_class[name] = len(list(train_dir.glob(f"{name}_*.jpg"))) if train_dir.exists() else 0
+print(f"Dataset: {nc} classes, {train_count} train / {val_count} val images")
+for name, cnt in per_class.items():
+    print(f"  {name}: {cnt} train")
+
 last_train = state.get("combined", {})
 if not FORCE and last_train.get("date") and last_train.get("imgsz") == IMGSZ:
     print(f"SKIP: combined already trained at {last_train['date']} imgsz={IMGSZ}")
     print("Use --force to re-train")
     sys.exit(0)
 
-print(f"Training combined model: imgsz={IMGSZ} batch={BATCH}")
+EPOCHS = 100
+print(f"Training: imgsz={IMGSZ} batch={BATCH} epochs={EPOCHS} device={DEVICE}")
 model = YOLO(BASE_MODEL)
-print(f"Device: {DEVICE}")
 try:
-    model.train(
+    results = model.train(
         data=str(dataset_yaml),
-        epochs=100,
+        epochs=EPOCHS,
         imgsz=IMGSZ,
         batch=BATCH,
         workers=0,
@@ -85,13 +105,21 @@ try:
         project=str(MODELS),
         name="combined",
         exist_ok=True,
-        patience=30,
+        patience=60,
     )
 except Exception as e:
     print(f"Training exit (best.pt should be saved already): {e}")
 
 best = MODELS / "combined" / "weights" / "best.pt"
 if best.exists():
+    # Print validation metrics from results if available
+    try:
+        metrics = model.metrics
+        if metrics:
+            print(f"Validation: P={metrics.precision():.4f} R={metrics.recall():.4f} mAP50={metrics.mAP50():.4f} mAP50-95={metrics.mAP()}")
+    except Exception:
+        pass
+
     dst = str(BASE / "fine-tuned.pt")
     try:
         shutil.copy(str(best), dst)
@@ -113,6 +141,6 @@ if best.exists():
     for old_pt in BASE.glob("fine-tuned-*.pt"):
         old_pt.unlink()
         print(f"Cleaned: {old_pt.name}")
-    print(f"DONE: fine-tuned.pt saved")
+    print("DONE: fine-tuned.pt saved")
 else:
     print("ERROR: best.pt not found")

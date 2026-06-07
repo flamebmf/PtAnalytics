@@ -66,11 +66,12 @@ face:
 
 vmr:
   enabled: true
-  min_confidence: 0.3
+  min_confidence: 0.2
 
 dataset:
   crop_enabled: true
   crop_interval: 60
+  min_crop_size: 30
 
 training:
   enabled: true
@@ -78,8 +79,9 @@ training:
   min_show_frames: 5
   epochs: 30
   batch_size: 8
-  imgsz: 1280
+  imgsz: 640
   base_model: yolo11m.pt
+  crop_classifier_confidence: 0.65
 
 ui:
   page_size: 23

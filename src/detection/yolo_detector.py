@@ -108,7 +108,7 @@ class YoloDetector:
                 h = y2 - y1
                 cls_id = int(box.cls[0])
                 min_sz = self.min_bbox_size_per_class.get(cls_id, self.min_bbox_size)
-                if w < min_sz or h < min_sz:
+                if max(w, h) < min_sz:
                     continue
                 # Drop extremely elongated bboxes (heads, feet, false positives)
                 aspect = max(w, h) / max(min(w, h), 1)

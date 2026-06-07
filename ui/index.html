@@ -1423,22 +1423,22 @@ function renderCamerasTab(data) {
     <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div class="d-flex align-items-center gap-2 mb-1">
         <strong style="width:100px">${escapeHtml(c.name || c.id)}</strong>
-        <label style="font-size:.7rem"><input type="checkbox" data-cam="${i}" data-key="enabled" ${c.enabled ? 'checked' : ''}> вкл</label>
-        <label style="font-size:.7rem"><input type="checkbox" data-cam="${i}" data-key="motion_enabled" ${c.motion_enabled !== false ? 'checked' : ''}> motion</label>
-        <label style="font-size:.7rem"><input type="checkbox" data-cam="${i}" data-key="lpr_enabled" ${c.lpr_enabled !== false ? 'checked' : ''}> LPR</label>
-        <label style="font-size:.7rem"><input type="checkbox" data-cam="${i}" data-key="face_enabled" ${c.face_enabled !== false ? 'checked' : ''}> Face</label>
-        <label style="font-size:.7rem"><input type="checkbox" data-cam="${i}" data-key="vmr_enabled" ${c.vmr_enabled !== false ? 'checked' : ''}> VMR</label>
+        <label style="font-size:.7rem" title="Вкл/выкл камеру"><input type="checkbox" data-cam="${i}" data-key="enabled" ${c.enabled ? 'checked' : ''}> вкл</label>
+        <label style="font-size:.7rem" title="Включить детекцию движения (Motion)"><input type="checkbox" data-cam="${i}" data-key="motion_enabled" ${c.motion_enabled !== false ? 'checked' : ''}> motion</label>
+        <label style="font-size:.7rem" title="Включить распознавание номеров (LPR)"><input type="checkbox" data-cam="${i}" data-key="lpr_enabled" ${c.lpr_enabled !== false ? 'checked' : ''}> LPR</label>
+        <label style="font-size:.7rem" title="Включить распознавание лиц"><input type="checkbox" data-cam="${i}" data-key="face_enabled" ${c.face_enabled !== false ? 'checked' : ''}> Face</label>
+        <label style="font-size:.7rem" title="Включить распознавание марки авто (VMR)"><input type="checkbox" data-cam="${i}" data-key="vmr_enabled" ${c.vmr_enabled !== false ? 'checked' : ''}> VMR</label>
       </div>
-      <div class="d-flex flex-wrap gap-2 mb-1" style="font-size:.7rem">
+      <div class="d-flex flex-wrap gap-2 mb-1" style="font-size:.7rem" title="Какие классы детектировать на этой камере">
         ${['person','bicycle','car','motorcycle','bus','truck'].map(cls =>
           `<label style="font-size:.7rem"><input type="checkbox" data-cam="${i}" data-key="cls_${cls}" ${!c.enabled_classes || c.enabled_classes.includes(cls) ? 'checked' : ''}> ${cls}</label>`
         ).join('')}
       </div>
       <div class="d-flex flex-wrap gap-2" style="font-size:.7rem">
-        <span>FPS <input type="number" data-cam="${i}" data-key="fps" value="${c.fps || 10}" style="width:50px;background:rgba(4,7,13,.8);border:1px solid rgba(255,255,255,.08);border-radius:4px;color:var(--text);padding:1px 4px"></span>
-        <span>imgsz <input type="number" data-cam="${i}" data-key="imgsz" value="${(c.detector||{}).imgsz || 640}" style="width:55px;background:rgba(4,7,13,.8);border:1px solid rgba(255,255,255,.08);border-radius:4px;color:var(--text);padding:1px 4px"></span>
-        <span>motion_thr <input type="text" data-cam="${i}" data-key="motion_threshold" value="${c.motion_threshold || 0.005}" style="width:60px;background:rgba(4,7,13,.8);border:1px solid rgba(255,255,255,.08);border-radius:4px;color:var(--text);padding:1px 4px"></span>
-        <span>RTSP <input type="text" data-cam="${i}" data-key="rtsp_url" value="${escapeHtml(c.rtsp_url || '')}" style="width:250px;background:rgba(4,7,13,.8);border:1px solid rgba(255,255,255,.08);border-radius:4px;color:var(--text);padding:1px 4px;font-size:.65rem"></span>
+        <span title="Кадров в секунду для обработки">FPS <input type="number" data-cam="${i}" data-key="fps" value="${c.fps || 10}" style="width:50px;background:rgba(4,7,13,.8);border:1px solid rgba(255,255,255,.08);border-radius:4px;color:var(--text);padding:1px 4px"></span>
+        <span title="Размер входного изображения детектора (px). Больше = точнее, но медленнее">imgsz <input type="number" data-cam="${i}" data-key="imgsz" value="${(c.detector||{}).imgsz || 640}" style="width:55px;background:rgba(4,7,13,.8);border:1px solid rgba(255,255,255,.08);border-radius:4px;color:var(--text);padding:1px 4px"></span>
+        <span title="Порог чувствительности движения (0-1). Ниже = чувствительнее">motion_thr <input type="text" data-cam="${i}" data-key="motion_threshold" value="${c.motion_threshold || 0.005}" style="width:60px;background:rgba(4,7,13,.8);border:1px solid rgba(255,255,255,.08);border-radius:4px;color:var(--text);padding:1px 4px"></span>
+        <span title="RTSP URL видеопотока">RTSP <input type="text" data-cam="${i}" data-key="rtsp_url" value="${escapeHtml(c.rtsp_url || '')}" style="width:250px;background:rgba(4,7,13,.8);border:1px solid rgba(255,255,255,.08);border-radius:4px;color:var(--text);padding:1px 4px;font-size:.65rem"></span>
       </div>
     </div>`).join('') || '<span style="color:var(--muted)">Нет камер</span>';
 }
@@ -1450,14 +1450,15 @@ function renderDetectorTab(data) {
     <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div style="font-size:.75rem;color:var(--accent);margin-bottom:6px">YOLO Detector</div>
       <div class="row g-2" style="font-size:.75rem">
-        <div class="col-4"><label>model <input type="text" id="cfg-det-model" value="${escapeHtml(d.model || 'yolo11m.pt')}" class="form-control form-control-sm"></label></div>
-        <div class="col-4"><label>confidence <input type="text" id="cfg-det-confidence" value="${d.confidence || 0.35}" class="form-control form-control-sm"></label></div>
-        <div class="col-4"><label>iou <input type="text" id="cfg-det-iou" value="${d.iou || 0.45}" class="form-control form-control-sm"></label></div>
-        <div class="col-4"><label>imgsz <input type="number" id="cfg-det-imgsz" value="${d.imgsz || 640}" class="form-control form-control-sm"></label></div>
-        <div class="col-4"><label>min_bbox_size <input type="number" id="cfg-det-min-bbox" value="${d.min_bbox_size || 40}" class="form-control form-control-sm"></label></div>
-        <div class="col-4"><label>workers <input type="number" id="cfg-det-workers" value="${d.workers || 4}" class="form-control form-control-sm"></label></div>
-        <div class="col-4"><label>backend <select id="cfg-det-backend" class="form-select form-select-sm"><option ${d.backend==='torch'?'selected':''}>torch</option><option ${d.backend==='openvino'?'selected':''}>openvino</option></select></label></div>
-        <div class="col-4"><label>device <input type="text" id="cfg-det-device" value="${d.device || 'cpu'}" class="form-control form-control-sm"></label></div>
+        <div class="col-4"><label title="YOLO model file (yolo11n.pt, yolo11m.pt, fine-tuned.pt)">model <input type="text" id="cfg-det-model" value="${escapeHtml(d.model || 'yolo11m.pt')}" class="form-control form-control-sm"></label></div>
+        <div class="col-4"><label title="Порог уверенности детекции (0-1). Ниже = больше объектов, но больше ложных срабатываний">confidence <input type="text" id="cfg-det-confidence" value="${d.confidence || 0.35}" class="form-control form-control-sm"></label></div>
+        <div class="col-4"><label title="IoU порог NMS (0-1). Ниже = меньше пересекающихся框">iou <input type="text" id="cfg-det-iou" value="${d.iou || 0.45}" class="form-control form-control-sm"></label></div>
+        <div class="col-4"><label title="Размер входного изображения (px). Больше = точнее, но медленнее">imgsz <input type="number" id="cfg-det-imgsz" value="${d.imgsz || 640}" class="form-control form-control-sm"></label></div>
+        <div class="col-4"><label title="Минимальный размер bbox (px). Детекции меньше отбрасываются">min_bbox_size <input type="number" id="cfg-det-min-bbox" value="${d.min_bbox_size || 40}" class="form-control form-control-sm"></label></div>
+        <div class="col-4"><label title="JSON словарь class_id→min_px. Переопределяет min_bbox_size для конкретных классов">min_bbox_size_per_class <input type="text" id="cfg-det-min-bbox-pc" value='${JSON.stringify(d.min_bbox_size_per_class) || '{}'}' class="form-control form-control-sm"></label></div>
+        <div class="col-4"><label title="Количество потоков инференса">workers <input type="number" id="cfg-det-workers" value="${d.workers || 4}" class="form-control form-control-sm"></label></div>
+        <div class="col-4"><label title="Бэкенд инференса: torch (CUDA/CPU) или openvino">backend <select id="cfg-det-backend" class="form-select form-select-sm"><option ${d.backend==='torch'?'selected':''}>torch</option><option ${d.backend==='openvino'?'selected':''}>openvino</option></select></label></div>
+        <div class="col-4"><label title="Устройство: cpu, cuda, cuda:0">device <input type="text" id="cfg-det-device" value="${d.device || 'cpu'}" class="form-control form-control-sm"></label></div>
       </div>
     </div>
     <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
@@ -1470,11 +1471,11 @@ function renderDetectorTab(data) {
 
 function renderTrackerFields(t) {
   return `
-    <div class="col-3"><label>max_age <input type="number" id="cfg-trk-max-age" value="${t.max_age || 30}" class="form-control form-control-sm"></label></div>
-    <div class="col-3"><label>n_init <input type="number" id="cfg-trk-n-init" value="${t.n_init || 3}" class="form-control form-control-sm"></label></div>
-    <div class="col-3"><label>iou_threshold <input type="text" id="cfg-trk-iou" value="${t.iou_threshold ?? 0.5}" class="form-control form-control-sm"></label></div>
-    <div class="col-3"><label>depart_timeout <input type="text" id="cfg-trk-depart" value="${t.depart_timeout || 10}" class="form-control form-control-sm"></label></div>
-    <div class="col-3"><label>buf_size <input type="number" id="cfg-trk-buf" value="${t.frame_buffer_size || 30}" class="form-control form-control-sm"></label></div>`;
+    <div class="col-3"><label title="Макс. кадров хранения потерянного трека до удаления">max_age <input type="number" id="cfg-trk-max-age" value="${t.max_age || 30}" class="form-control form-control-sm"></label></div>
+    <div class="col-3"><label title="Кадров для подтверждения нового трека">n_init <input type="number" id="cfg-trk-n-init" value="${t.n_init || 3}" class="form-control form-control-sm"></label></div>
+    <div class="col-3"><label title="IoU порог сопоставления детекции с треком (0-1)">iou_threshold <input type="text" id="cfg-trk-iou" value="${t.iou_threshold ?? 0.5}" class="form-control form-control-sm"></label></div>
+    <div class="col-3"><label title="Секунд до удаления покинувшего зону объекта">depart_timeout <input type="text" id="cfg-trk-depart" value="${t.depart_timeout || 10}" class="form-control form-control-sm"></label></div>
+    <div class="col-3"><label title="Размер буфера кадров для сглаживания трека">buf_size <input type="number" id="cfg-trk-buf" value="${t.frame_buffer_size || 30}" class="form-control form-control-sm"></label></div>`;
 }
 
 function renderMotionTab(data) {
@@ -1484,10 +1485,10 @@ function renderMotionTab(data) {
     <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div style="font-size:.75rem;color:var(--accent);margin-bottom:6px">Motion Detection</div>
       <div class="row g-2" style="font-size:.75rem">
-        <div class="col-4"><label>threshold <input type="text" id="cfg-mot-threshold" value="${m.threshold || 0.005}" class="form-control form-control-sm"></label></div>
-        <div class="col-4"><label>skip_seconds <input type="text" id="cfg-mot-skip" value="${m.skip_seconds || 0}" class="form-control form-control-sm"></label></div>
-        <div class="col-4"><label>method <select id="cfg-mot-method" class="form-select form-select-sm"><option ${m.method==='mog2'?'selected':''}>mog2</option><option ${m.method==='absdiff'?'selected':''}>absdiff</option><option ${m.method==='none'?'selected':''}>none</option></select></label></div>
-        <div class="col-4"><label>resize <input type="text" id="cfg-mot-resize" value="${(m.resize_to||[640,360]).join(',')}" class="form-control form-control-sm" placeholder="w,h"></label></div>
+        <div class="col-4"><label title="Чувствительность детекции движения (0-1). Ниже = чувствительнее">threshold <input type="text" id="cfg-mot-threshold" value="${m.threshold || 0.005}" class="form-control form-control-sm"></label></div>
+        <div class="col-4"><label title="Секунд пропуска после события движения">skip_seconds <input type="text" id="cfg-mot-skip" value="${m.skip_seconds || 0}" class="form-control form-control-sm"></label></div>
+        <div class="col-4"><label title="Метод детекции движения: mog2, absdiff, none">method <select id="cfg-mot-method" class="form-select form-select-sm"><option ${m.method==='mog2'?'selected':''}>mog2</option><option ${m.method==='absdiff'?'selected':''}>absdiff</option><option ${m.method==='none'?'selected':''}>none</option></select></label></div>
+        <div class="col-4"><label title="Изменение размера кадра перед детекцией (W,H). Меньше = быстрее">resize <input type="text" id="cfg-mot-resize" value="${(m.resize_to||[640,360]).join(',')}" class="form-control form-control-sm" placeholder="w,h"></label></div>
       </div>
     </div>`;
 }
@@ -1501,23 +1502,23 @@ function renderRecognitionTab(data) {
     <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div style="font-size:.75rem;color:var(--accent);margin-bottom:6px">LPR — номера</div>
       <div class="row g-2" style="font-size:.75rem">
-        <div class="col-3"><label><input type="checkbox" id="cfg-lpr-enabled" ${lpr.enabled!==false?'checked':''}> вкл</label></div>
-        <div class="col-4"><label>min_confidence <input type="text" id="cfg-lpr-conf" value="${lpr.min_confidence || 0.6}" class="form-control form-control-sm"></label></div>
+        <div class="col-3"><label title="Включить распознавание номеров"><input type="checkbox" id="cfg-lpr-enabled" ${lpr.enabled!==false?'checked':''}> вкл</label></div>
+        <div class="col-4"><label title="Мин. уверенность для детекции номера (0-1)">min_confidence <input type="text" id="cfg-lpr-conf" value="${lpr.min_confidence || 0.6}" class="form-control form-control-sm"></label></div>
       </div>
     </div>
     <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div style="font-size:.75rem;color:var(--accent);margin-bottom:6px">Face — лица</div>
       <div class="row g-2" style="font-size:.75rem">
-        <div class="col-3"><label><input type="checkbox" id="cfg-face-enabled" ${face.enabled!==false?'checked':''}> вкл</label></div>
-        <div class="col-4"><label>min_confidence <input type="text" id="cfg-face-conf" value="${face.min_confidence || 0.5}" class="form-control form-control-sm"></label></div>
-        <div class="col-4"><label>search_threshold <input type="text" id="cfg-face-thr" value="${face.search_threshold || 0.6}" class="form-control form-control-sm"></label></div>
+        <div class="col-3"><label title="Включить распознавание лиц"><input type="checkbox" id="cfg-face-enabled" ${face.enabled!==false?'checked':''}> вкл</label></div>
+        <div class="col-4"><label title="Мин. уверенность для детекции лица (0-1)">min_confidence <input type="text" id="cfg-face-conf" value="${face.min_confidence || 0.5}" class="form-control form-control-sm"></label></div>
+        <div class="col-4"><label title="Порог сходства для поиска лица в базе (0-1)">search_threshold <input type="text" id="cfg-face-thr" value="${face.search_threshold || 0.6}" class="form-control form-control-sm"></label></div>
       </div>
     </div>
     <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div style="font-size:.75rem;color:var(--accent);margin-bottom:6px">VMR — марка машины</div>
       <div class="row g-2" style="font-size:.75rem">
-        <div class="col-3"><label><input type="checkbox" id="cfg-vmr-enabled" ${vmr.enabled!==false?'checked':''}> вкл</label></div>
-        <div class="col-4"><label>min_confidence <input type="text" id="cfg-vmr-conf" value="${vmr.min_confidence || 0.3}" class="form-control form-control-sm"></label></div>
+        <div class="col-3"><label title="Включить распознавание марки авто"><input type="checkbox" id="cfg-vmr-enabled" ${vmr.enabled!==false?'checked':''}> вкл</label></div>
+        <div class="col-4"><label title="Мин. уверенность для определения марки (0-1)">min_confidence <input type="text" id="cfg-vmr-conf" value="${vmr.min_confidence || 0.3}" class="form-control form-control-sm"></label></div>
       </div>
     </div>`;
 }
@@ -1581,24 +1582,24 @@ function renderSystemTab(data) {
     <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div style="font-size:.75rem;color:var(--accent);margin-bottom:6px">Общие</div>
       <div class="row g-2" style="font-size:.75rem">
-        <div class="col-4"><label>cleanup_interval <input type="number" id="cfg-gen-cleanup" value="${g.cleanup_interval_seconds || 300}" class="form-control form-control-sm"></label></div>
-        <div class="col-4"><label>stats_log_interval <input type="number" id="cfg-gen-stats" value="${g.stats_log_interval_seconds || 30}" class="form-control form-control-sm"></label></div>
+        <div class="col-4"><label title="Интервал (сек) очистки старых данных">cleanup_interval <input type="number" id="cfg-gen-cleanup" value="${g.cleanup_interval_seconds || 300}" class="form-control form-control-sm"></label></div>
+        <div class="col-4"><label title="Интервал (сек) записи статистики в лог">stats_log_interval <input type="number" id="cfg-gen-stats" value="${g.stats_log_interval_seconds || 30}" class="form-control form-control-sm"></label></div>
       </div>
     </div>
     <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div style="font-size:.75rem;color:var(--accent);margin-bottom:6px">Обучение</div>
       <div class="row g-2" style="font-size:.75rem">
-        <div class="col-3"><label>min_samples <input type="number" id="cfg-trn-min-samples" value="${t.min_samples_per_class || 30}" class="form-control form-control-sm"></label></div>
-        <div class="col-3"><label>epochs <input type="number" id="cfg-trn-epochs" value="${t.epochs || 30}" class="form-control form-control-sm"></label></div>
-        <div class="col-3"><label>batch_size <input type="number" id="cfg-trn-batch" value="${t.batch_size || 8}" class="form-control form-control-sm"></label></div>
-        <div class="col-3"><label>imgsz <input type="number" id="cfg-trn-imgsz" value="${t.imgsz || 1280}" class="form-control form-control-sm"></label></div>
+        <div class="col-3"><label title="Мин. количество кадров на класс для запуска обучения">min_samples <input type="number" id="cfg-trn-min-samples" value="${t.min_samples_per_class || 30}" class="form-control form-control-sm"></label></div>
+        <div class="col-3"><label title="Количество эпох обучения">epochs <input type="number" id="cfg-trn-epochs" value="${t.epochs || 30}" class="form-control form-control-sm"></label></div>
+        <div class="col-3"><label title="Размер батча при обучении">batch_size <input type="number" id="cfg-trn-batch" value="${t.batch_size || 8}" class="form-control form-control-sm"></label></div>
+        <div class="col-3"><label title="Размер входного изображения (px) для обучения">imgsz <input type="number" id="cfg-trn-imgsz" value="${t.imgsz || 1280}" class="form-control form-control-sm"></label></div>
       </div>
     </div>
     <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
       <div style="font-size:.75rem;color:var(--accent);margin-bottom:6px">UI</div>
       <div class="row g-2" style="font-size:.75rem">
-      <div class="col-4"><label>page_size <input type="number" id="cfg-ui-page" value="${u.page_size || 23}" class="form-control form-control-sm"></label></div>
-      <div class="col-4"><label>auto_refresh <input type="number" id="cfg-ui-refresh" value="${u.auto_refresh_seconds || 30}" class="form-control form-control-sm"></label></div>
+      <div class="col-4"><label title="Количество записей на странице">page_size <input type="number" id="cfg-ui-page" value="${u.page_size || 23}" class="form-control form-control-sm"></label></div>
+      <div class="col-4"><label title="Интервал автообновления страницы (сек)">auto_refresh <input type="number" id="cfg-ui-refresh" value="${u.auto_refresh_seconds || 30}" class="form-control form-control-sm"></label></div>
     </div>
     </div>`;
 }
@@ -1616,6 +1617,7 @@ function collectSettingsForm() {
   det.iou = parseFloat(document.getElementById('cfg-det-iou')?.value) || det.iou;
   det.imgsz = parseInt(document.getElementById('cfg-det-imgsz')?.value) || det.imgsz;
   det.min_bbox_size = parseInt(document.getElementById('cfg-det-min-bbox')?.value) || det.min_bbox_size;
+  try { det.min_bbox_size_per_class = JSON.parse(document.getElementById('cfg-det-min-bbox-pc')?.value) || det.min_bbox_size_per_class; } catch {}
   det.workers = parseInt(document.getElementById('cfg-det-workers')?.value) || det.workers;
   det.backend = document.getElementById('cfg-det-backend')?.value || det.backend;
   det.device = document.getElementById('cfg-det-device')?.value || det.device;

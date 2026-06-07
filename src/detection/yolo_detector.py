@@ -22,6 +22,7 @@ class YoloDetector:
         workers: int | None = None,
         backend: str = "torch",
         min_bbox_size: int = 40,
+        min_bbox_size_per_class: Optional[dict[int, int]] = None,
     ):
         if workers:
             os.environ.setdefault("OMP_NUM_THREADS", str(workers))
@@ -35,6 +36,7 @@ class YoloDetector:
         self.imgsz = imgsz
         self.backend = backend
         self.min_bbox_size = min_bbox_size
+        self.min_bbox_size_per_class = min_bbox_size_per_class or {}
         self.model_path = model_path
 
         local_path = self._find_model(model_path)
@@ -103,8 +105,7 @@ class YoloDetector:
                 w = x2 - x1
                 h = y2 - y1
                 cls_id = int(box.cls[0])
-                # Persons can be small at distance; vehicles are always large
-                min_sz = {0: 40, 2: 80, 5: 80, 7: 80}.get(cls_id, self.min_bbox_size)
+                min_sz = self.min_bbox_size_per_class.get(cls_id, self.min_bbox_size)
                 if w < min_sz or h < min_sz:
                     continue
                 # Drop extremely elongated bboxes (heads, feet, false positives)

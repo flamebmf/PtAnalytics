@@ -39,6 +39,7 @@ detector:
   backend: torch
   classes: [0, 1, 2, 3, 5, 7]
   min_bbox_size: 40
+  min_bbox_size_per_class: {0: 40, 2: 80, 5: 80, 7: 80}  # YOLO class_id -> min size
 
 tracker:
   max_age: 30

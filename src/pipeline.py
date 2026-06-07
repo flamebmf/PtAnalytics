@@ -99,7 +99,8 @@ class CameraPipeline:
             imgsz=cam_det.get("imgsz", det_cfg.get("imgsz", 640)),
             workers=cam_det.get("workers", det_cfg.get("workers")),
             backend=cam_det.get("backend", det_cfg.get("backend", "torch")),
-                min_bbox_size=cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40)),
+            min_bbox_size=cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40)),
+            min_bbox_size_per_class=cam_det.get("min_bbox_size_per_class", det_cfg.get("min_bbox_size_per_class", {0: 40, 2: 80, 5: 80, 7: 80})),
         )
 
         # Tracker
@@ -763,7 +764,8 @@ class CameraPipeline:
                 imgsz=cam_det.get("imgsz", det_cfg.get("imgsz", 1280)),
                 workers=cam_det.get("workers", det_cfg.get("workers")),
                 backend=new_backend,
-            min_bbox_size=cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40)),
+                min_bbox_size=cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40)),
+                min_bbox_size_per_class=cam_det.get("min_bbox_size_per_class", det_cfg.get("min_bbox_size_per_class", {0: 40, 2: 80, 5: 80, 7: 80})),
             )
         else:
             self.detector.confidence = cam_det.get("confidence", det_cfg.get("confidence", 0.6))
@@ -771,6 +773,7 @@ class CameraPipeline:
             self.detector.classes = self._resolve_classes(camera_config, settings)
             self.detector.imgsz = cam_det.get("imgsz", det_cfg.get("imgsz", 1280))
             self.detector.min_bbox_size = cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40))
+            self.detector.min_bbox_size_per_class = cam_det.get("min_bbox_size_per_class", det_cfg.get("min_bbox_size_per_class", {0: 40, 2: 80, 5: 80, 7: 80}))
 
         # -- Motion --
         mot_cfg = settings.get("motion", {})

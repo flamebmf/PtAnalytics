@@ -96,13 +96,15 @@ class YoloDetector:
             verbose=False,
         )
         detections = []
-        min_sz = self.min_bbox_size
         fh, fw = frame.shape[:2]
         if results[0].boxes is not None:
             for box in results[0].boxes:
                 x1, y1, x2, y2 = box.xyxy[0].tolist()
                 w = x2 - x1
                 h = y2 - y1
+                cls_id = int(box.cls[0])
+                # Persons can be small at distance; vehicles are always large
+                min_sz = 20 if cls_id == 0 else self.min_bbox_size
                 if w < min_sz or h < min_sz:
                     continue
                 # Drop extremely elongated bboxes (heads, feet, false positives)
@@ -116,8 +118,8 @@ class YoloDetector:
                 detections.append({
                     "bbox": (int(x1), int(y1), int(x2), int(y2)),
                     "confidence": float(box.conf[0]),
-                    "class_id": int(box.cls[0]),
-                    "class_name": self.model.names[int(box.cls[0])],
+                    "class_id": cls_id,
+                    "class_name": self.model.names[cls_id],
                 })
         return detections
 

@@ -100,7 +100,7 @@ class CameraPipeline:
             workers=cam_det.get("workers", det_cfg.get("workers")),
             backend=cam_det.get("backend", det_cfg.get("backend", "torch")),
             min_bbox_size=cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40)),
-            min_bbox_size_per_class=cam_det.get("min_bbox_size_per_class", det_cfg.get("min_bbox_size_per_class", {0: 80, 2: 120, 5: 120, 7: 120})),
+            min_bbox_size_per_class=cam_det.get("min_bbox_size_per_class", det_cfg.get("min_bbox_size_per_class", {0: 50, 2: 80, 5: 80, 7: 80})),
             cross_class_iou=cam_det.get("cross_class_iou", det_cfg.get("cross_class_iou", 0.3)),
         )
 
@@ -759,23 +759,23 @@ class CameraPipeline:
             self.detector = YoloDetector(
                 model_path=new_model,
                 device=new_device,
-                confidence=cam_det.get("confidence", det_cfg.get("confidence", 0.6)),
+                confidence=cam_det.get("confidence", det_cfg.get("confidence", 0.4)),
                 iou=cam_det.get("iou", det_cfg.get("iou", 0.45)),
                 classes=self._resolve_classes(camera_config, settings),
-                imgsz=cam_det.get("imgsz", det_cfg.get("imgsz", 1280)),
+                imgsz=cam_det.get("imgsz", det_cfg.get("imgsz", 640)),
                 workers=cam_det.get("workers", det_cfg.get("workers")),
                 backend=new_backend,
                 min_bbox_size=cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40)),
-            min_bbox_size_per_class=cam_det.get("min_bbox_size_per_class", det_cfg.get("min_bbox_size_per_class", {0: 80, 2: 120, 5: 120, 7: 120})),
-            cross_class_iou=cam_det.get("cross_class_iou", det_cfg.get("cross_class_iou", 0.3)),
+                min_bbox_size_per_class=cam_det.get("min_bbox_size_per_class", det_cfg.get("min_bbox_size_per_class", {0: 50, 2: 80, 5: 80, 7: 80})),
+                cross_class_iou=cam_det.get("cross_class_iou", det_cfg.get("cross_class_iou", 0.3)),
             )
         else:
-            self.detector.confidence = cam_det.get("confidence", det_cfg.get("confidence", 0.6))
+            self.detector.confidence = cam_det.get("confidence", det_cfg.get("confidence", 0.4))
             self.detector.iou = cam_det.get("iou", det_cfg.get("iou", 0.45))
             self.detector.classes = self._resolve_classes(camera_config, settings)
-            self.detector.imgsz = cam_det.get("imgsz", det_cfg.get("imgsz", 1280))
+            self.detector.imgsz = cam_det.get("imgsz", det_cfg.get("imgsz", 640))
             self.detector.min_bbox_size = cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40))
-            self.detector.min_bbox_size_per_class = cam_det.get("min_bbox_size_per_class", det_cfg.get("min_bbox_size_per_class", {0: 80, 2: 120, 5: 120, 7: 120}))
+            self.detector.min_bbox_size_per_class = cam_det.get("min_bbox_size_per_class", det_cfg.get("min_bbox_size_per_class", {0: 50, 2: 80, 5: 80, 7: 80}))
             self.detector.cross_class_iou = cam_det.get("cross_class_iou", det_cfg.get("cross_class_iou", 0.3))
 
         # -- Motion --

@@ -85,9 +85,6 @@ body {
 .form-check-input { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.15); }
 .form-check-input:checked { background-color: var(--accent); border-color: var(--accent); }
 .form-check-label { font-size: .75rem; color: var(--muted); }
-/* Datalist suggestions */
-input[list]::-webkit-calendar-picker-indicator { filter: invert(.5); }
-input[list]:focus { border-color: var(--accent); }
 /* Live preview */
 .live-preview {
   background: var(--card-bg); border: 1px solid var(--card-border);
@@ -1080,10 +1077,7 @@ async function refreshNameSuggestions() {
   try {
     const r = await fetch('/objects/names');
     const d = await r.json();
-    const names = (d.names || []).map(n => n.name).sort();
-    allNames = names;
-    const datalist = document.getElementById('name-suggestions');
-    if (datalist) datalist.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">`).join('');
+    allNames = (d.names || []).map(n => n.name).sort();
     setTimeout(refreshAutocomplete, 100);
   } catch {}
 }
@@ -1734,61 +1728,71 @@ function fmtElapsed(iso) {
 }
 
 // ---- Custom Autocomplete ----
+let _autoDrop = null;
+let _autoActiveInput = null;
+let _autoActiveIdx = -1;
+
+function _getAutoDrop() {
+  if (!_autoDrop) {
+    _autoDrop = document.createElement('div');
+    _autoDrop.className = 'autocomplete-drop';
+    document.body.appendChild(_autoDrop);
+    _autoDrop.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      if (e.target.tagName === 'DIV' && _autoActiveInput) {
+        _autoActiveInput.value = e.target.textContent;
+        _autoDrop.classList.remove('show');
+        _autoActiveInput.dispatchEvent(new Event('change', {bubbles:true}));
+        _autoActiveInput.focus();
+      }
+    });
+  }
+  return _autoDrop;
+}
+function _hideAutoDrop() { if (_autoDrop) _autoDrop.classList.remove('show'); }
+
 function initAutocomplete(input) {
   const wrap = input.closest('.autocomplete-wrap');
   if (!wrap || input._acInit) return;
   input._acInit = true;
-  const drop = document.createElement('div');
-  drop.className = 'autocomplete-drop';
-  wrap.appendChild(drop);
-  let activeIdx = -1;
 
-  input.addEventListener('input', () => {
+  const show = () => {
     const val = input.value.toLowerCase();
     const matches = allNames.filter(n => n.toLowerCase().includes(val)).slice(0, 8);
-    if (!matches.length || !val) { drop.classList.remove('show'); activeIdx = -1; return; }
+    const drop = _getAutoDrop();
+    if (!matches.length || !val) { _hideAutoDrop(); return; }
     drop.innerHTML = matches.map(n => `<div>${escapeHtml(n)}</div>`).join('');
     const rect = input.getBoundingClientRect();
     drop.style.left = rect.left + 'px';
     drop.style.width = rect.width + 'px';
-    if (rect.bottom + 200 > window.innerHeight) {
-      drop.style.top = (rect.top - 180) + 'px';
-    } else {
-      drop.style.top = rect.bottom + 'px';
-    }
+    drop.style.top = (rect.bottom + 200 > window.innerHeight ? rect.top - 180 : rect.bottom) + 'px';
     drop.classList.add('show');
-    activeIdx = -1;
-  });
+    _autoActiveInput = input;
+    _autoActiveIdx = -1;
+  };
 
+  input.addEventListener('input', show);
+  input.addEventListener('focus', () => {
+    if (input.value && allNames.some(n => n.toLowerCase().includes(input.value.toLowerCase()))) show();
+  });
+  input.addEventListener('blur', () => setTimeout(_hideAutoDrop, 200));
   input.addEventListener('keydown', (e) => {
+    const drop = _getAutoDrop();
     const divs = drop.querySelectorAll('div');
     if (!drop.classList.contains('show') || !divs.length) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, divs.length - 1); updateActive(divs); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = Math.max(activeIdx - 1, 0); updateActive(divs); }
-    else if (e.key === 'Enter' && activeIdx >= 0) { 
-      e.preventDefault(); 
-      input.value = divs[activeIdx].textContent; 
-      drop.classList.remove('show'); 
+    if (e.key === 'ArrowDown') { e.preventDefault(); _autoActiveIdx = Math.min(_autoActiveIdx + 1, divs.length - 1); _updateActive(divs); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); _autoActiveIdx = Math.max(_autoActiveIdx - 1, 0); _updateActive(divs); }
+    else if (e.key === 'Enter' && _autoActiveIdx >= 0) {
+      e.preventDefault();
+      input.value = divs[_autoActiveIdx].textContent;
+      _hideAutoDrop();
       input.dispatchEvent(new Event('change', {bubbles:true}));
     }
   });
+}
 
-  drop.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    if (e.target.tagName === 'DIV') { 
-      input.value = e.target.textContent; 
-      drop.classList.remove('show'); 
-      input.dispatchEvent(new Event('change', {bubbles:true})); 
-      input.focus();
-    }
-  });
-
-  input.addEventListener('blur', () => { setTimeout(() => drop.classList.remove('show'), 200); });
-  input.addEventListener('focus', () => { if (input.value && allNames.some(n => n.toLowerCase().includes(input.value.toLowerCase()))) input.dispatchEvent(new Event('input')); });
-
-  function updateActive(divs) {
-    divs.forEach((d, i) => d.classList.toggle('active', i === activeIdx));
-  }
+function _updateActive(divs) {
+  divs.forEach((d, i) => d.classList.toggle('active', i === _autoActiveIdx));
 }
 
 function refreshAutocomplete() {

@@ -802,6 +802,7 @@ function renderGroupFrames() {
   if (groupFrameOffset + GROUP_PAGE < groupFrames.length) {
     grid.innerHTML += `<div class="text-center mt-2"><button class="btn-neon btn-sm" onclick="groupShowMore()">Ещё ${Math.min(GROUP_PAGE, groupFrames.length - groupFrameOffset - GROUP_PAGE)} из ${groupFrames.length - groupFrameOffset - GROUP_PAGE}</button></div>`;
   }
+  setTimeout(refreshAutocomplete, 50);
 }
 
 function groupShowMore() {

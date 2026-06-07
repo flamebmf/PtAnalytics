@@ -1459,6 +1459,7 @@ function renderDetectorTab(data) {
         <div class="col-4"><label title="Количество потоков инференса">workers <input type="number" id="cfg-det-workers" value="${d.workers || 4}" class="form-control form-control-sm"></label></div>
         <div class="col-4"><label title="Бэкенд инференса: torch (CUDA/CPU) или openvino">backend <select id="cfg-det-backend" class="form-select form-select-sm"><option ${d.backend==='torch'?'selected':''}>torch</option><option ${d.backend==='openvino'?'selected':''}>openvino</option></select></label></div>
         <div class="col-4"><label title="Устройство: cpu, cuda, cuda:0">device <input type="text" id="cfg-det-device" value="${d.device || 'cpu'}" class="form-control form-control-sm"></label></div>
+        <div class="col-4"><label title="Cross-class NMS IoU (0-1). Пересекающиеся bbox разных классов с lower confidence подавляются">cross_class_iou <input type="text" id="cfg-det-cci" value="${d.cross_class_iou ?? 0.3}" class="form-control form-control-sm"></label></div>
       </div>
     </div>
     <div class="p-2 mb-2 rounded" style="background:rgba(4,7,13,.6);border:1px solid rgb(122,130,148)">
@@ -1621,6 +1622,7 @@ function collectSettingsForm() {
   det.workers = parseInt(document.getElementById('cfg-det-workers')?.value) || det.workers;
   det.backend = document.getElementById('cfg-det-backend')?.value || det.backend;
   det.device = document.getElementById('cfg-det-device')?.value || det.device;
+  det.cross_class_iou = parseFloat(document.getElementById('cfg-det-cci')?.value) ?? det.cross_class_iou;
   settings.detector = det;
 
   // Tracker

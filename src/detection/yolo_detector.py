@@ -23,6 +23,7 @@ class YoloDetector:
         backend: str = "torch",
         min_bbox_size: int = 40,
         min_bbox_size_per_class: Optional[dict[int, int]] = None,
+        cross_class_iou: float = 0.3,
     ):
         if workers:
             os.environ.setdefault("OMP_NUM_THREADS", str(workers))
@@ -37,6 +38,7 @@ class YoloDetector:
         self.backend = backend
         self.min_bbox_size = min_bbox_size
         self.min_bbox_size_per_class = min_bbox_size_per_class or {}
+        self.cross_class_iou = cross_class_iou
         self.model_path = model_path
 
         local_path = self._find_model(model_path)
@@ -122,6 +124,28 @@ class YoloDetector:
                     "class_id": cls_id,
                     "class_name": self.model.names[cls_id],
                 })
+        # Cross-class NMS: keep highest-confidence detection per overlapping group
+        if self.cross_class_iou > 0 and len(detections) > 1:
+            detections.sort(key=lambda d: d["confidence"], reverse=True)
+            keep = []
+            for d in detections:
+                suppressed = False
+                x1, y1, x2, y2 = d["bbox"]
+                for kept in keep:
+                    kx1, ky1, kx2, ky2 = kept["bbox"]
+                    xi1 = max(x1, kx1); yi1 = max(y1, ky1)
+                    xi2 = min(x2, kx2); yi2 = min(y2, ky2)
+                    if xi2 > xi1 and yi2 > yi1:
+                        inter = (xi2 - xi1) * (yi2 - yi1)
+                        area_d = (x2 - x1) * (y2 - y1)
+                        area_k = (kx2 - kx1) * (ky2 - ky1)
+                        iou = inter / (area_d + area_k - inter) if (area_d + area_k - inter) > 0 else 0
+                        if iou >= self.cross_class_iou:
+                            suppressed = True
+                            break
+                if not suppressed:
+                    keep.append(d)
+            return keep
         return detections
 
     @property

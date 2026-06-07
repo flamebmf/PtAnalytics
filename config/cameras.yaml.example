@@ -17,6 +17,7 @@ cameras:
       imgsz: 640
       min_bbox_size: 40
       min_bbox_size_per_class: {0: 40, 2: 80, 5: 80, 7: 80}  # per YOLO class_id: person, car, bus, truck
+      cross_class_iou: 0.3  # cross-class NMS: suppress lower-confidence overlapping detections of different classes
   - id: "camera2"
     name: "Camera 2"
     rtsp_url: "rtsp://user:password@192.168.1.101:554/stream1"

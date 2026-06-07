@@ -4,11 +4,17 @@
 CLIP-based clustering auto-assignment for PtAnalytics.
 
 Clusters unlabeled objects by visual similarity using CLIP embeddings,
-then assigns cluster names per class (e.g., person_001, car_001).
+then assigns names based on existing named references or cluster IDs.
+
+First, unlabeled objects are compared against existing named references
+(same class only) via CLIP cosine similarity.  If similarity >= sim_threshold,
+the reference name is reused.  Remaining objects are clustered by DBSCAN
+and named with auto-increment IDs (e.g., person_001, car_001).
 
 Usage:
   from tools.auto_assign_clip import run_auto_assign
-  assignments, details = run_auto_assign(extract_dir, manifest, eps=0.5, min_samples=2)
+  assignments, details = run_auto_assign(
+      extract_dir, manifest, eps=0.5, min_samples=2, sim_threshold=0.85)
 """
 from pathlib import Path
 from collections import defaultdict
@@ -59,7 +65,43 @@ def _cluster_embeddings(embeddings, eps=0.5, min_samples=2):
     return clustering.labels_
 
 
-def run_auto_assign(extract_dir, manifest, eps=0.5, min_samples=2):
+def _compute_reference_centroids(model, preprocess, device, manifest, extract_dir):
+    """Build a dict: class_name -> [(name, centroid_embedding), ...]"""
+    references = manifest.get("references", {})
+    centroids = defaultdict(list)
+    for name, entries in references.items():
+        embs = []
+        for entry in entries:
+            emb = _compute_pair_embedding(model, preprocess, device, entry, extract_dir)
+            if emb is not None:
+                embs.append(emb)
+        if not embs:
+            continue
+        centroid = np.mean(embs, axis=0)
+        centroid = centroid / np.linalg.norm(centroid)
+        class_name = entries[0].get("class_name", "unknown") if entries else "unknown"
+        centroids[class_name].append((name, centroid))
+    return dict(centroids)
+
+
+def _match_by_reference(entry_emb, ref_centroids, class_name, sim_threshold):
+    """Return (name, similarity) of best-matching reference, or (None, 0)."""
+    refs = ref_centroids.get(class_name, [])
+    if not refs:
+        return None, 0.0
+    best_name = None
+    best_sim = 0.0
+    for name, centroid in refs:
+        sim = float(np.dot(entry_emb, centroid))
+        if sim > best_sim:
+            best_sim = sim
+            best_name = name
+    if best_sim >= sim_threshold:
+        return best_name, best_sim
+    return None, best_sim
+
+
+def run_auto_assign(extract_dir, manifest, eps=0.5, min_samples=2, sim_threshold=0.85):
     extract_dir = Path(extract_dir)
     unlabeled = manifest.get("unlabeled", [])
     if not unlabeled:
@@ -70,54 +112,94 @@ def run_auto_assign(extract_dir, manifest, eps=0.5, min_samples=2):
     model, preprocess, device = _load_clip()
     print(f"CLIP loaded on {device}")
 
-    # Group by class_name for per-class clustering
-    by_class = defaultdict(list)
-    for entry in unlabeled:
-        by_class[entry.get("class_name", "unknown")].append(entry)
+    # ---- Step 1: build reference centroids from named objects ----
+    print("Computing reference embeddings...")
+    ref_centroids = _compute_reference_centroids(
+        model, preprocess, device, manifest, extract_dir)
+    ref_count = sum(len(v) for v in ref_centroids.values())
+    print(f"  References loaded: {ref_count} names across {len(ref_centroids)} classes")
 
+    # ---- Step 2: try to match unlabeled against references ----
+    print(f"Matching against references (threshold={sim_threshold})...")
+    match_assignments = {}
+    match_details = []
+    leftover_entries = []
+    for entry in unlabeled:
+        emb = _compute_pair_embedding(model, preprocess, device, entry, extract_dir)
+        class_name = entry.get("class_name", "unknown")
+        if emb is None:
+            match_details.append({
+                "object_id": entry["object_id"],
+                "class_name": class_name,
+                "cluster_id": -1,
+                "cluster_name": "",
+                "assigned": False,
+                "similarity": 0,
+                "match_method": "no_embedding",
+            })
+            continue
+        name, sim = _match_by_reference(emb, ref_centroids, class_name, sim_threshold)
+        if name:
+            match_assignments[entry["object_id"]] = name
+            match_details.append({
+                "object_id": entry["object_id"],
+                "class_name": class_name,
+                "cluster_id": -1,
+                "cluster_name": name,
+                "assigned": True,
+                "similarity": round(sim, 4),
+                "match_method": "reference",
+            })
+        else:
+            leftover_entries.append((entry, emb))
+
+    print(f"  Matched by reference: {len(match_assignments)}")
+
+    # ---- Step 3: cluster remaining objects ----
     assignments = {}
     details = []
-    total = len(unlabeled)
     assigned_count = 0
 
-    for class_name, entries in sorted(by_class.items()):
-        print(f"  Clustering {class_name} ({len(entries)} objects)...")
+    by_class = defaultdict(list)
+    for entry, emb in leftover_entries:
+        by_class[entry.get("class_name", "unknown")].append((entry, emb))
 
-        # Compute embeddings
-        embs = []
-        valid_entries = []
-        for entry in entries:
-            emb = _compute_pair_embedding(model, preprocess, device, entry, extract_dir)
-            if emb is not None:
-                embs.append(emb)
-                valid_entries.append(entry)
+    # Find highest existing cluster number per class for naming continuity
+    max_cluster_per_class = {}
+    for class_name in by_class:
+        max_cluster_per_class[class_name] = 0
+
+    for class_name, items in sorted(by_class.items()):
+        entries, embs = zip(*items) if items else ([], [])
+        print(f"  Clustering {class_name} ({len(entries)} remaining)...")
 
         if len(embs) < min_samples:
             print(f"    Too few objects ({len(embs)}), skipping")
-            for entry in valid_entries:
+            for entry in entries:
                 details.append({
                     "object_id": entry["object_id"],
                     "class_name": class_name,
                     "cluster_id": -1,
                     "cluster_name": "",
                     "assigned": False,
+                    "similarity": 0,
+                    "match_method": "cluster",
                 })
             continue
 
-        # Cluster
         labels = _cluster_embeddings(embs, eps=eps, min_samples=min_samples)
-
-        # Assign names per cluster
         cluster_map = {}
+        next_id = max_cluster_per_class.get(class_name, 0)
         for label in set(labels):
             if label == -1:
                 continue
             count = int(np.sum(labels == label))
             if count >= min_samples:
-                cluster_id = f"{class_name}_{label + 1:03d}"
-                cluster_map[label] = cluster_id
+                next_id += 1
+                cluster_map[label] = f"{class_name}_{next_id:03d}"
+        max_cluster_per_class[class_name] = next_id
 
-        for entry, label, emb in zip(valid_entries, labels, embs):
+        for entry, label, emb in zip(entries, labels, embs):
             cluster_name = cluster_map.get(label, "")
             assigned = bool(cluster_name)
             details.append({
@@ -126,13 +208,19 @@ def run_auto_assign(extract_dir, manifest, eps=0.5, min_samples=2):
                 "cluster_id": int(label),
                 "cluster_name": cluster_name,
                 "assigned": assigned,
+                "similarity": 0,
+                "match_method": "cluster",
             })
             if assigned:
                 assignments[entry["object_id"]] = cluster_name
                 assigned_count += 1
 
         n_clusters = len(cluster_map)
-        print(f"    Clusters: {n_clusters}, assigned: {len(cluster_map) * min_samples}+")
+        print(f"    Clusters: {n_clusters}, assigned: {n_clusters * min_samples}+")
 
-    print(f"  Assigned: {assigned_count}/{total}")
+    # Step 4: merge reference matches + cluster assignments
+    assignments.update(match_assignments)
+    details = match_details + details
+    total = len(unlabeled)
+    print(f"  Assigned: {len(assignments)}/{total}")
     return assignments, details

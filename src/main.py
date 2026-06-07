@@ -709,7 +709,7 @@ async def main():
                         base = f"references/{name}/{obj.id}_{best.id}"
                         arcname_full = f"{base}_full.jpg"
                         zf.write(str(img_path), arcname_full)
-                        entry = {"full": arcname_full}
+                        entry = {"full": arcname_full, "class_name": obj.class_name}
                         jpg = await loop.run_in_executor(
                             None, _crop_and_encode,
                             img_path, best.bbox_x1, best.bbox_y1, best.bbox_x2, best.bbox_y2,

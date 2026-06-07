@@ -166,11 +166,13 @@ def auto_assign(config):
 
     # Step 4: run CLIP clustering (no upload)
     print("  Running CLIP clustering...")
+    sim_threshold = config["clip"].get("sim_threshold", 0.85)
     assignments, details = run_auto_assign(
         extract_dir=extract_dir,
         manifest=manifest,
         eps=eps,
         min_samples=min_samples,
+        sim_threshold=sim_threshold,
     )
 
     # Step 5: save results locally

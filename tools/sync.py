@@ -215,6 +215,7 @@ def cmd_auto_assign(args):
         manifest=manifest,
         eps=args.eps,
         min_samples=args.min_samples,
+        sim_threshold=args.sim_threshold,
     )
 
     if not assignments:
@@ -246,6 +247,7 @@ def main():
     parser.add_argument("--output-dir", help="Working directory")
     parser.add_argument("--eps", type=float, default=0.5, help="DBSCAN clustering epsilon")
     parser.add_argument("--min-samples", type=int, default=2, help="DBSCAN min samples")
+    parser.add_argument("--sim-threshold", type=float, default=0.85, help="CLIP similarity threshold for reference matching")
     args = parser.parse_args()
 
     if args.command == "backup":

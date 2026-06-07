@@ -776,7 +776,7 @@ class CameraPipeline:
             self.detector.imgsz = cam_det.get("imgsz", det_cfg.get("imgsz", 640))
             self.detector.min_bbox_size = cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40))
             self.detector.min_bbox_size_per_class = cam_det.get("min_bbox_size_per_class", det_cfg.get("min_bbox_size_per_class", {0: 50, 2: 80, 5: 80, 7: 80}))
-            self.detector.cross_class_iou = cam_det.get("cross_class_iou", det_cfg.get("cross_class_iou", 0.3))
+            self.detector.cross_class_iou = cam_det.get("cross_class_iou", det_cfg.get("cross_class_iou", 0.3)) or 0.3
 
         # -- Motion --
         mot_cfg = settings.get("motion", {})

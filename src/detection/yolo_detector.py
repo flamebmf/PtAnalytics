@@ -38,7 +38,7 @@ class YoloDetector:
         self.backend = backend
         self.min_bbox_size = min_bbox_size
         self.min_bbox_size_per_class = min_bbox_size_per_class or {}
-        self.cross_class_iou = cross_class_iou
+        self.cross_class_iou = cross_class_iou or 0.3
         self.model_path = model_path
 
         local_path = self._find_model(model_path)

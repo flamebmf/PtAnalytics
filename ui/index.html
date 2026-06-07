@@ -1622,7 +1622,7 @@ function collectSettingsForm() {
   det.workers = parseInt(document.getElementById('cfg-det-workers')?.value) || det.workers;
   det.backend = document.getElementById('cfg-det-backend')?.value || det.backend;
   det.device = document.getElementById('cfg-det-device')?.value || det.device;
-  det.cross_class_iou = parseFloat(document.getElementById('cfg-det-cci')?.value) ?? det.cross_class_iou;
+  det.cross_class_iou = parseFloat(document.getElementById('cfg-det-cci')?.value) || 0.3;
   settings.detector = det;
 
   // Tracker

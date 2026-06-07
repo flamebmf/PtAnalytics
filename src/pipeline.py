@@ -23,6 +23,38 @@ from .actions import ActionDispatcher
 from .stats import PipelineStats
 
 
+class SizeStats:
+    """Running mean/stddev of bbox dimensions per class, used to filter false positives."""
+
+    def __init__(self):
+        self._stats: dict[int, dict] = {}
+
+    def observe(self, class_id: int, w: float, h: float):
+        s = self._stats.setdefault(class_id, {"n": 0, "mw": 0.0, "m2w": 0.0, "mh": 0.0, "m2h": 0.0})
+        n = s["n"] + 1
+        dw = w - s["mw"]
+        s["mw"] += dw / n
+        s["m2w"] += dw * (w - s["mw"])
+        dh = h - s["mh"]
+        s["mh"] += dh / n
+        s["m2h"] += dh * (h - s["mh"])
+        s["n"] = n
+
+    def normalcy(self, class_id: int, w: float, h: float) -> float:
+        s = self._stats.get(class_id)
+        if s is None or s["n"] < 10:
+            return 1.0
+        stdw = (s["m2w"] / max(s["n"] - 1, 1)) ** 0.5
+        stdh = (s["m2h"] / max(s["n"] - 1, 1)) ** 0.5
+        if stdw < 0.1 or stdh < 0.1:
+            return 1.0
+        zw = abs(w - s["mw"]) / stdw
+        zh = abs(h - s["mh"]) / stdh
+        z = max(zw, zh)
+        # z=0 → 1.0, z=2 → ~0.6, z=3 → ~0.3, z=4 → ~0.1
+        return max(0.0, 1.0 - z * 0.3)
+
+
 class CameraPipeline:
     """Orchestrates capture→motion→detect→track→recognize→store→act for one camera."""
 
@@ -125,6 +157,7 @@ class CameraPipeline:
         self._processed_tracks: set[int] = set()
         self._best_frame_data: dict[int, dict] = {}
         self._best_quality_saved: dict[int, float] = {}
+        self.size_stats = SizeStats()
         self._buf_size = max(5, int(trk_cfg.get("frame_buffer_size", 30)))
         self.track_depart_timeout = settings.get("tracker", {}).get("depart_timeout", 3.0)
 
@@ -215,6 +248,10 @@ class CameraPipeline:
                 self.stats.frames_processed += 1
                 self.stats.last_frame_at = time()
                 detections = self._filter_persons_in_vehicles(detections)
+                for d in detections:
+                    bw = d["bbox"][2] - d["bbox"][0]
+                    bh = d["bbox"][3] - d["bbox"][1]
+                    self.size_stats.observe(d["class_id"], bw, bh)
                 if not detections:
                     if self.debug:
                         logger.info(f"[TIMING {self.cam_name}] mot={_t_mot:.2f}s det={_t_det:.2f}s post=0s")
@@ -246,9 +283,9 @@ class CameraPipeline:
                     bh = track["bbox"][3] - track["bbox"][1]
                     area = bw * bh
                     aspect = max(bw, bh) / max(min(bw, bh), 1)
-                    # Penalize elongated bboxes (heads/feet/false positives) — prefer compact shapes
                     aspect_penalty = min(1.0, 4.0 / aspect) if aspect > 1 else 1.0
-                    quality = area * track.get("confidence", 0) * aspect_penalty
+                    size_score = self.size_stats.normalcy(track["class_id"], bw, bh)
+                    quality = area * track.get("confidence", 0) * aspect_penalty * size_score
                     self._frame_buffer.setdefault(tid, []).append({
                         "frame": frame.copy(), "track": track, "area": area,
                         "confidence": track.get("confidence", 0),

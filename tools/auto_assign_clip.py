@@ -85,13 +85,24 @@ def _compute_reference_centroids(model, preprocess, device, manifest, extract_di
 
 
 def _match_by_reference(entry_emb, ref_centroids, class_name, sim_threshold):
-    """Return (name, similarity) of best-matching reference, or (None, 0)."""
-    refs = ref_centroids.get(class_name, [])
-    if not refs:
+    """Return (name, similarity) of best-matching reference, or (None, 0).
+
+    Tries same-class references first; falls back to all references in case
+    the reference lacks class_name (old export format) or the YOLO class
+    label was wrong.
+    """
+    candidates = ref_centroids.get(class_name, [])
+    # Fall back to all references if no match in same class
+    if not candidates:
+        all_refs = []
+        for refs in ref_centroids.values():
+            all_refs.extend(refs)
+        candidates = all_refs
+    if not candidates:
         return None, 0.0
     best_name = None
     best_sim = 0.0
-    for name, centroid in refs:
+    for name, centroid in candidates:
         sim = float(np.dot(entry_emb, centroid))
         if sim > best_sim:
             best_sim = sim

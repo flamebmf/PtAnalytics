@@ -100,14 +100,14 @@ class CameraPipeline:
             workers=cam_det.get("workers", det_cfg.get("workers")),
             backend=cam_det.get("backend", det_cfg.get("backend", "torch")),
             min_bbox_size=cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40)),
-            min_bbox_size_per_class=cam_det.get("min_bbox_size_per_class", det_cfg.get("min_bbox_size_per_class", {0: 40, 2: 80, 5: 80, 7: 80})),
+            min_bbox_size_per_class=cam_det.get("min_bbox_size_per_class", det_cfg.get("min_bbox_size_per_class", {0: 80, 2: 120, 5: 120, 7: 120})),
             cross_class_iou=cam_det.get("cross_class_iou", det_cfg.get("cross_class_iou", 0.3)),
         )
 
         # Tracker
         trk_cfg = settings.get("tracker", {})
         self.tracker = DeepSortTracker(
-            max_age=trk_cfg.get("max_age", 30),
+            max_age=trk_cfg.get("max_age", 150),
             n_init=trk_cfg.get("n_init", 3),
             nn_budget=trk_cfg.get("nn_budget", 100),
             iou_threshold=trk_cfg.get("iou_threshold", 0.5),
@@ -161,7 +161,7 @@ class CameraPipeline:
         self._best_quality_saved: dict[int, float] = {}
         self.size_stats = SizeStats()
         self._buf_size = max(5, int(trk_cfg.get("frame_buffer_size", 30)))
-        self.track_depart_timeout = settings.get("tracker", {}).get("depart_timeout", 3.0)
+        self.track_depart_timeout = settings.get("tracker", {}).get("depart_timeout", 15.0)
 
         # Dataset collection (3 crops per track: entry, mid, exit)
         ds_cfg = settings.get("dataset", {})
@@ -766,7 +766,7 @@ class CameraPipeline:
                 workers=cam_det.get("workers", det_cfg.get("workers")),
                 backend=new_backend,
                 min_bbox_size=cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40)),
-            min_bbox_size_per_class=cam_det.get("min_bbox_size_per_class", det_cfg.get("min_bbox_size_per_class", {0: 40, 2: 80, 5: 80, 7: 80})),
+            min_bbox_size_per_class=cam_det.get("min_bbox_size_per_class", det_cfg.get("min_bbox_size_per_class", {0: 80, 2: 120, 5: 120, 7: 120})),
             cross_class_iou=cam_det.get("cross_class_iou", det_cfg.get("cross_class_iou", 0.3)),
             )
         else:
@@ -775,7 +775,7 @@ class CameraPipeline:
             self.detector.classes = self._resolve_classes(camera_config, settings)
             self.detector.imgsz = cam_det.get("imgsz", det_cfg.get("imgsz", 1280))
             self.detector.min_bbox_size = cam_det.get("min_bbox_size", det_cfg.get("min_bbox_size", 40))
-            self.detector.min_bbox_size_per_class = cam_det.get("min_bbox_size_per_class", det_cfg.get("min_bbox_size_per_class", {0: 40, 2: 80, 5: 80, 7: 80}))
+            self.detector.min_bbox_size_per_class = cam_det.get("min_bbox_size_per_class", det_cfg.get("min_bbox_size_per_class", {0: 80, 2: 120, 5: 120, 7: 120}))
             self.detector.cross_class_iou = cam_det.get("cross_class_iou", det_cfg.get("cross_class_iou", 0.3))
 
         # -- Motion --
@@ -787,10 +787,10 @@ class CameraPipeline:
 
         # -- Tracker --
         trk_cfg = settings.get("tracker", {})
-        self.tracker.max_age = trk_cfg.get("max_age", 30)
+        self.tracker.max_age = trk_cfg.get("max_age", 150)
         self.tracker.n_init = trk_cfg.get("n_init", 3)
         self.tracker.iou_threshold = trk_cfg.get("iou_threshold") or 0.5
-        self.track_depart_timeout = trk_cfg.get("depart_timeout", 3.0)
+        self.track_depart_timeout = trk_cfg.get("depart_timeout", 15.0)
 
         # -- LPR (camera config can override global) --
         lpr_cfg = settings.get("lpr", {})

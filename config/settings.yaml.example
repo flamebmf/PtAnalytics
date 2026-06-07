@@ -39,15 +39,15 @@ detector:
   backend: torch
   classes: [0, 1, 2, 3, 5, 7]
   min_bbox_size: 40
-  min_bbox_size_per_class: {0: 40, 2: 80, 5: 80, 7: 80}  # YOLO class_id -> min size
+  min_bbox_size_per_class: {0: 80, 2: 120, 5: 120, 7: 120}  # YOLO class_id -> min size
   cross_class_iou: 0.3  # cross-class NMS: suppress lower-confidence overlapping detections of different classes
 
 tracker:
-  max_age: 30
+  max_age: 150      # кадров хранения потерянного трека (15 сек при 10 FPS)
   n_init: 3
   iou_threshold: 0.3
   nn_budget: 100
-  depart_timeout: 10.0
+  depart_timeout: 15.0  # сек до удаления покинувшего зону трека
   frame_buffer_size: 30
 
 motion:

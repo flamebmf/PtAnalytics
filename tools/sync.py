@@ -104,6 +104,7 @@ def cmd_train(args):
 
     # Step 3: run local training
     print("Running training...")
+    sys.stdout.flush()
     train_script = Path(__file__).resolve().parent / "train_yolo.py"
     if not train_script.exists():
         train_script = Path(__file__).resolve().parent / "train_yolo.bat"
@@ -112,30 +113,32 @@ def cmd_train(args):
         train_cmd.append(str(args.imgsz))
     if getattr(args, "force", False):
         train_cmd.append("--force")
-    result = subprocess.run(
-        train_cmd,
-        cwd=str(out_dir), capture_output=True, text=True,
-    )
     import re as _re
     _epoch_line = _re.compile(r'\s+(\d+)/(\d+)\s+([\d.]+G)?\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)')
-    _last_epoch = 0
-    _total_epochs = 0
-    for line in result.stdout.splitlines():
+    proc = subprocess.Popen(
+        train_cmd, cwd=str(out_dir),
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, bufsize=1,
+    )
+    returncode = 0
+    for line in iter(proc.stdout.readline, ''):
+        line = line.rstrip('\n\r')
+        if not line:
+            continue
         m = _epoch_line.search(line)
         if m:
             cur, total, _, box, cls_, dfl = m.groups()
-            cur, total = int(cur), int(total)
-            _total_epochs = total
-            if cur != _last_epoch and (cur % 10 == 0 or cur == total):
-                _last_epoch = cur
-                print(f"  Эпоха {cur}/{total}  box={box}  cls={cls_}  dfl={dfl}")
+            print(f"  Эпоха {cur}/{total}  box={box}  cls={cls_}  dfl={dfl}")
         elif 'all' in line and 'mAP50' in line:
             parts = line.split()
             if len(parts) >= 7:
                 print(f"  Валидация: P={parts[3]} R={parts[4]} mAP50={parts[5]} mAP50-95={parts[6]}")
-        elif any(kw in line for kw in ('DONE', 'ERROR', 'SKIP', 'Training', 'Dataset:', 'Validation:', 'Device:', 'Cleaned:', 'Found ZIP', ' train')):
-            print(f"  {line.strip()}")
-    if result.returncode != 0:
+        elif any(kw in line for kw in ('DONE', 'ERROR', 'SKIP', 'Training', 'Dataset:', 'Validation:', 'Device:', 'Cleaned:', 'Found ZIP', ' train', 'WARNING', 'wandb')):
+            print(f"  {line}")
+        elif line.strip().startswith(('Epoch', '     ', 'Class', 'Speed')):
+            print(f"  {line}")
+    proc.wait()
+    if proc.returncode != 0:
         print("Training failed")
         sys.exit(1)
 

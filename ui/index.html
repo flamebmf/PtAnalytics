@@ -774,10 +774,13 @@ const GROUP_PAGE = 50;
 let groupFrames = [];
 let groupFrameOffset = 0;
 
-function renderGroupFrames() {
+function renderGroupFrames(reset) {
   const grid = document.getElementById('frame-grid');
-  const chunk = groupFrames.slice(0, groupFrameOffset + GROUP_PAGE);
-  grid.innerHTML = chunk.map(f => {
+  if (reset) grid.innerHTML = '';
+  const start = reset ? 0 : grid.querySelectorAll('.frame-card').length;
+  const end = Math.min(groupFrames.length, start + GROUP_PAGE);
+  for (let i = start; i < end; i++) {
+    const f = groupFrames[i];
     const ts = f.timestamp ? f.timestamp.replace('T', ' ').slice(0, 19) : '';
     const conf = f.confidence ? (f.confidence * 100).toFixed(0) + '%' : '';
     const cam = f.camera_id || '';
@@ -785,7 +788,7 @@ function renderGroupFrames() {
     const bb = f.bbox || [];
     const bboxSize = bb.length === 4 ? (bb[2]-bb[0])+'x'+(bb[3]-bb[1]) : '';
     const info = f._obj ? encodeURIComponent(JSON.stringify({ id: f.id, class_name: f._obj.class_name, name: f._obj.name, plate: f._obj.plate, face: f._obj.face, vmr: f._obj.vmr, conf, ts, cam, bbox: bboxSize })) : '';
-    return `<div class="frame-card position-relative" id="fc-${f.id}">
+    grid.insertAdjacentHTML('beforeend', `<div class="frame-card position-relative" id="fc-${f.id}">
       <img src="${f.image}" onclick="openLightbox('${f.image}','${info}')" loading="lazy" onerror="this.style.display='none'">
       <button class="btn btn-xs btn-danger position-absolute top-0 end-0 m-1" style="font-size:10px;line-height:1;padding:0 4px;border-radius:3px" onclick="deleteFrame('${f.id}')" title="Удалить">&times;</button>
       <div class="d-flex justify-content-between mt-1" style="font-size:.7rem;color:var(--muted)">
@@ -796,17 +799,18 @@ function renderGroupFrames() {
         ${['person','bicycle','car','motorcycle','bus','truck'].map(c => `<option value="${c}" ${c===cls?'selected':''}>${c}</option>`).join('')}
       </select>
       ${nameInputHtml(f.id, '')}
-    </div>`;
-  }).join('');
-  if (groupFrameOffset + GROUP_PAGE < groupFrames.length) {
-    grid.innerHTML += `<div class="text-center mt-2"><button class="btn-neon btn-sm" onclick="groupShowMore()">Ещё ${Math.min(GROUP_PAGE, groupFrames.length - groupFrameOffset - GROUP_PAGE)} из ${groupFrames.length - groupFrameOffset - GROUP_PAGE}</button></div>`;
+    </div>`);
+  }
+  const oldBtn = grid.querySelector('.show-more-wrap');
+  if (oldBtn) oldBtn.remove();
+  if (end < groupFrames.length) {
+    grid.insertAdjacentHTML('beforeend', `<div class="text-center mt-2 show-more-wrap"><button class="btn-neon btn-sm" onclick="groupShowMore()">Ещё ${Math.min(GROUP_PAGE, groupFrames.length - end)} из ${groupFrames.length - end}</button></div>`);
   }
   setTimeout(refreshAutocomplete, 50);
 }
 
 function groupShowMore() {
-  groupFrameOffset += GROUP_PAGE;
-  renderGroupFrames();
+  renderGroupFrames(false);
 }
 
 // ---- Group Detail ----
@@ -834,7 +838,7 @@ async function loadGroupDetail(name, ids) {
     }
     groupFrames.sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
     if (groupFrames.length) {
-      renderGroupFrames();
+      renderGroupFrames(true);
     } else { empty.style.display = 'block'; }
     div.style.display = 'block';
     setTimeout(refreshAutocomplete, 50);

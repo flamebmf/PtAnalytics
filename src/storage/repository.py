@@ -392,12 +392,16 @@ class StorageRepository:
             cnt = await session.execute(
                 select(func.count(FrameCapture.id)).where(FrameCapture.object_id == old_obj.id)
             )
-            old_obj.appearance_count = cnt.scalar() or 0
-            max_ts = await session.execute(
-                select(func.max(FrameCapture.timestamp)).where(FrameCapture.object_id == old_obj.id)
-            )
-            max_val = max_ts.scalar()
-            old_obj.last_seen = self._db_timestamp(max_val) if max_val else old_obj.last_seen
+            remaining = cnt.scalar() or 0
+            old_obj.appearance_count = remaining
+            if remaining == 0:
+                old_obj.name = None
+            else:
+                max_ts = await session.execute(
+                    select(func.max(FrameCapture.timestamp)).where(FrameCapture.object_id == old_obj.id)
+                )
+                max_val = max_ts.scalar()
+                old_obj.last_seen = self._db_timestamp(max_val) if max_val else old_obj.last_seen
 
             await session.commit()
             return {"frame_id": str(fc.id), "new_object_id": str(target_obj.id), "class_name": new_class}
@@ -465,10 +469,14 @@ class StorageRepository:
             # Recalc old
             from sqlalchemy import func
             cnt = await session.execute(select(func.count(FrameCapture.id)).where(FrameCapture.object_id == old_obj.id))
-            old_obj.appearance_count = cnt.scalar() or 0
-            max_ts = await session.execute(select(func.max(FrameCapture.timestamp)).where(FrameCapture.object_id == old_obj.id))
-            max_val = max_ts.scalar()
-            old_obj.last_seen = self._db_timestamp(max_val) if max_val else old_obj.last_seen
+            remaining = cnt.scalar() or 0
+            old_obj.appearance_count = remaining
+            if remaining == 0:
+                old_obj.name = None
+            else:
+                max_ts = await session.execute(select(func.max(FrameCapture.timestamp)).where(FrameCapture.object_id == old_obj.id))
+                max_val = max_ts.scalar()
+                old_obj.last_seen = self._db_timestamp(max_val) if max_val else old_obj.last_seen
             await session.commit()
             return {"frame_id": str(fc.id), "target_name": target_name, "target_object_id": str(target_obj.id), "class_name": target_obj.class_name}
 

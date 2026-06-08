@@ -727,7 +727,7 @@ async def main():
                         base = f"unlabeled/{obj.id}_{best.id}"
                         arcname_full = f"{base}_full.jpg"
                         zf.write(str(img_path), arcname_full)
-                        entry = {"full": arcname_full, "object_id": str(obj.id), "class_name": obj.class_name}
+                        entry = {"full": arcname_full, "object_id": str(obj.id), "class_name": obj.class_name, "server_img": Path(best.image_path).name}
                         jpg = await loop.run_in_executor(
                             None, _crop_and_encode,
                             img_path, best.bbox_x1, best.bbox_y1, best.bbox_x2, best.bbox_y2,

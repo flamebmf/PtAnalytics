@@ -75,6 +75,8 @@ def _generate_clip_report(out_dir):
         key = d.get("cluster_name") or "__unassigned__"
         clusters[key].append(d)
 
+    server_url = "http://192.168.5.12:8090"
+
     def _img_tag(oid):
         arcname = img_index.get(oid)
         if not arcname:
@@ -83,7 +85,16 @@ def _generate_clip_report(out_dir):
         if not img_path.exists():
             return ""
         b64 = base64.b64encode(img_path.read_bytes()).decode()
-        return f'<img src="data:image/jpeg;base64,{b64}" style="max-width:200px;border-radius:6px;margin:4px">'
+        # Find server image URL for this object
+        server_img = ""
+        for entry in manifest.get("unlabeled", []):
+            if entry.get("object_id") == oid:
+                sv = entry.get("server_img", "")
+                if sv:
+                    server_img = f'{server_url}/frames/{sv}'
+                break
+        link = f' <a href="{server_img}" target="_blank" title="Открыть на сервере" style="color:#0af;text-decoration:none">🔗</a>' if server_img else ""
+        return f'<img src="data:image/jpeg;base64,{b64}" style="max-width:200px;border-radius:6px;margin:4px">{link}'
 
     sections = []
     assigned_total = 0
@@ -135,6 +146,7 @@ def auto_assign(config):
     out_dir = Path(config["paths"].get("output_dir", "./tools-output"))
     eps = config["clip"].get("eps", 0.5)
     min_samples = config["clip"].get("min_samples", 2)
+    clip_model = config["clip"].get("model", "ViT-L/14")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Step 1: backup
@@ -173,6 +185,7 @@ def auto_assign(config):
         eps=eps,
         min_samples=min_samples,
         sim_threshold=sim_threshold,
+        clip_model=clip_model,
     )
 
     # Step 5: save results locally

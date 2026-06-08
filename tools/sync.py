@@ -216,6 +216,7 @@ def cmd_auto_assign(args):
         eps=args.eps,
         min_samples=args.min_samples,
         sim_threshold=args.sim_threshold,
+        clip_model=args.clip_model,
     )
 
     if not assignments:
@@ -248,6 +249,7 @@ def main():
     parser.add_argument("--eps", type=float, default=0.5, help="DBSCAN clustering epsilon")
     parser.add_argument("--min-samples", type=int, default=2, help="DBSCAN min samples")
     parser.add_argument("--sim-threshold", type=float, default=0.85, help="CLIP similarity threshold for reference matching")
+    parser.add_argument("--clip-model", default="ViT-L/14", help="CLIP model name (ViT-B/32, ViT-B/16, ViT-L/14, ViT-L/14@336px)")
     args = parser.parse_args()
 
     if args.command == "backup":

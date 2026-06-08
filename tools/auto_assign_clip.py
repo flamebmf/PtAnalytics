@@ -22,12 +22,13 @@ from collections import defaultdict
 import numpy as np
 
 
-def _load_clip():
+def _load_clip(model_name="ViT-L/14"):
     """Lazy-load CLIP model (imported on demand)."""
     import torch
     import clip
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model, preprocess = clip.load("ViT-B/32", device=device)
+    print(f"  Loading CLIP model {model_name} on {device}...")
+    model, preprocess = clip.load(model_name, device=device)
     return model, preprocess, device
 
 
@@ -112,16 +113,14 @@ def _match_by_reference(entry_emb, ref_centroids, class_name, sim_threshold):
     return None, best_sim
 
 
-def run_auto_assign(extract_dir, manifest, eps=0.5, min_samples=2, sim_threshold=0.85):
+def run_auto_assign(extract_dir, manifest, eps=0.5, min_samples=2, sim_threshold=0.85, clip_model="ViT-L/14"):
     extract_dir = Path(extract_dir)
     unlabeled = manifest.get("unlabeled", [])
     if not unlabeled:
         print("No unlabeled images found")
         return {}, []
 
-    print(f"Loading CLIP model...")
-    model, preprocess, device = _load_clip()
-    print(f"CLIP loaded on {device}")
+    model, preprocess, device = _load_clip(clip_model)
 
     # ---- Step 1: build reference centroids from named objects ----
     print("Computing reference embeddings...")
